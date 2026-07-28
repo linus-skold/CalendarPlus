@@ -11,11 +11,13 @@ CalendarPlus = CalendarPlus or {}
 -- pulled in the first time the player opens the calendar), so it isn't
 -- guaranteed to exist yet -- loaded on demand below.
 --
--- CALENDAR_CONTEXTMENU_FLAG_SHOWDAY is Blizzard's own flag bit for "show the
--- day's create/paste options" (as opposed to the flag for an existing
--- event's edit/delete options) -- hardcoded here since it's a bit constant,
--- not something that changes, and not guaranteed to be an exported global.
+-- Blizzard's own flag bits for GenerateDayContextMenu's "flags" parameter --
+-- SHOWDAY is "show the day's create/paste options", SHOWEVENT is "show an
+-- existing event's copy/delete/paste options" (only meaningful together
+-- with a real eventButton). Hardcoded since these are bit constants, not
+-- something that changes, and not guaranteed to be exported globals.
 local CALENDAR_CONTEXTMENU_FLAG_SHOWDAY = 0x01
+local CALENDAR_CONTEXTMENU_FLAG_SHOWEVENT = 0x02
 
 -- A first attempt at this faked a plain proxy table for "dayButton" (just
 -- .day/.monthOffset plus no-op LockHighlight/UnlockHighlight), which looked
@@ -76,6 +78,7 @@ end
 -- rude, and forcibly relocating whatever it shows would be too.
 local weParkedCalendarFrame = false
 local hookedShowEventFrame = false
+local hookedCalendarMutations = false
 
 -- Tracks whichever event-info frame Blizzard most recently showed via
 -- CalendarFrame_ShowEventFrame, and which event (by startSerial:eventIndex)
@@ -103,6 +106,24 @@ local function EnsureCalendarFrameParked()
 				frame:ClearAllPoints()
 				frame:SetPoint("TOPLEFT", CalendarPlusMainFrame, "TOPRIGHT", 8, 0)
 			end
+		end)
+	end
+
+	-- Deleting or pasting an event is expected to fire CALENDAR_UPDATE_EVENT_LIST
+	-- afterward, which CalendarProvider's own watcher already reacts to by
+	-- rebuilding the cache -- but that relies on the event actually arriving
+	-- promptly, and there can be a real gap before it does. Forcing a rebuild
+	-- directly off the mutation call itself removes any dependency on that
+	-- event's timing for these two specific actions. Harmless if the event
+	-- also fires later -- RebuildEventCache just runs again, redundant but
+	-- not wrong.
+	if not hookedCalendarMutations then
+		hookedCalendarMutations = true
+		hooksecurefunc(C_Calendar, "ContextMenuEventRemove", function()
+			CalendarPlus.CalendarProvider:RebuildEventCache()
+		end)
+		hooksecurefunc(C_Calendar, "ContextMenuEventPaste", function()
+			CalendarPlus.CalendarProvider:RebuildEventCache()
 		end)
 	end
 end
@@ -148,29 +169,40 @@ function CalendarPlus.EnsureCalendarUIReady()
 	EnsureCalendarFrameParked()
 end
 
--- serial: the day cell's absolute DateMath serial day number.
-function CalendarPlus.ShowDayContextMenu(cellFrame, serial)
-	if not serial then return end
-
-	local _, _, day = CalendarPlus.DateMath.FromSerial(serial)
-	local monthOffset = ResolveMonthOffset(serial)
-
+-- Shared setup for both context-menu entry points below: loads
+-- Blizzard_Calendar, anchors C_Calendar's selection to today, parks
+-- CalendarFrame, and points the borrowed real day button at the given day.
+-- Returns the configured day button, or nil (having already printed a
+-- message) if Blizzard's Calendar UI isn't available.
+local function PrepareDayButton(serial)
 	if not EnsureBlizzardCalendarLoaded() then
 		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (Blizzard's own Calendar UI wasn't available).")
-		return
+		return nil
 	end
 
 	local realDayButton = GetRealDayButton()
 	if not realDayButton then
 		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (Blizzard's own Calendar UI wasn't available).")
-		return
+		return nil
 	end
+
+	local _, _, day = CalendarPlus.DateMath.FromSerial(serial)
+	local monthOffset = ResolveMonthOffset(serial)
 
 	CalendarPlus.CalendarProvider:AnchorToCurrentMonth()
 	EnsureCalendarFrameParked()
 
 	realDayButton.day = day
 	realDayButton.monthOffset = monthOffset
+	return realDayButton
+end
+
+-- serial: the day cell's absolute DateMath serial day number.
+function CalendarPlus.ShowDayContextMenu(cellFrame, serial)
+	if not serial then return end
+
+	local realDayButton = PrepareDayButton(serial)
+	if not realDayButton then return end
 
 	local ok, err = pcall(function()
 		MenuUtil.CreateContextMenu(cellFrame, function(owner, rootDescription)
@@ -179,6 +211,33 @@ function CalendarPlus.ShowDayContextMenu(cellFrame, serial)
 	end)
 	if not ok then
 		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (" .. tostring(err) .. ").")
+	end
+end
+
+-- barFrame: the clicked EventBarMixin bar (used as the menu's screen
+-- anchor). startSerial/eventIndex: identify the specific event, same as
+-- ShowEventInfo. Matches Blizzard's own CalendarDayEventButton_OnClick's
+-- RightButton case -- SHOWEVENT (alongside SHOWDAY, same as a plain day
+-- right-click) adds Copy/Delete for an event you created, or just Paste if
+-- you can't edit it (a holiday/systemwide event, or someone else's). Unlike
+-- dayButton, eventButton is only ever read as plain data (.eventIndex) by
+-- Blizzard's code -- no widget methods -- so a bare table is enough here.
+function CalendarPlus.ShowEventContextMenu(barFrame, startSerial, eventIndex)
+	if not startSerial or not eventIndex then return end
+
+	local realDayButton = PrepareDayButton(startSerial)
+	if not realDayButton then return end
+
+	local eventButton = { eventIndex = eventIndex }
+	local flags = CALENDAR_CONTEXTMENU_FLAG_SHOWDAY + CALENDAR_CONTEXTMENU_FLAG_SHOWEVENT
+
+	local ok, err = pcall(function()
+		MenuUtil.CreateContextMenu(barFrame, function(owner, rootDescription)
+			GenerateDayContextMenu(owner, rootDescription, flags, realDayButton, eventButton)
+		end)
+	end)
+	if not ok then
+		print("|cff33ff99CalendarPlus|r: couldn't open this event's menu (" .. tostring(err) .. ").")
 	end
 end
 
