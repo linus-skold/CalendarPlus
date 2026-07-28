@@ -191,23 +191,27 @@ local function BuildEvents()
 				-- itself (e.g. "Timewalking: Classic", or a PvP Brawl's own
 				-- specific name) rather than a fixed pattern list, so every
 				-- distinct event gets its own row with nothing lumped into a
-				-- shared catch-all -- nil for player-made events (arbitrary
-				-- titles, not listable by name at all).
+				-- shared catch-all.
 				--
-				-- The one deliberate exception: the yearly Anniversary
-				-- celebration's title changes every year ("15th Anniversary",
-				-- "16th Anniversary", ...), which would otherwise make each
-				-- year's occurrence its own permanent, never-reused row in
-				-- the picker. It's really the same recurring event, so it's
-				-- grouped under one shared key regardless of which year's
-				-- title it actually is.
+				-- Two deliberate exceptions, both grouped under one shared
+				-- key regardless of the specific title, since each is really
+				-- "the same thing" from the player's point of view:
+				-- - the yearly Anniversary celebration's title changes every
+				--   year ("15th Anniversary", "16th Anniversary", ...), which
+				--   would otherwise make each year's occurrence its own
+				--   permanent, never-reused row in the picker.
+				-- - player-made events (calendarType ~= HOLIDAY) have
+				--   arbitrary titles unique to each one, whether you created
+				--   them yourself or were just invited -- there's no sense
+				--   listing them individually, so they all collapse into one
+				--   "Player Events" bucket instead.
 				local eventKey
-				if ev.calendarType == "HOLIDAY" then
-					if displayTitle and displayTitle:find("Anniversary", 1, true) then
-						eventKey = "Anniversary"
-					else
-						eventKey = displayTitle
-					end
+				if ev.calendarType ~= "HOLIDAY" then
+					eventKey = "Player Events"
+				elseif displayTitle and displayTitle:find("Anniversary", 1, true) then
+					eventKey = "Anniversary"
+				else
+					eventKey = displayTitle
 				end
 
 				if seq == "START" then
@@ -256,7 +260,13 @@ local function BuildEvents()
 		-- the render-time isSingleDay recompute in MainFrame's weekly-reset
 		-- trim -- an event that only *becomes* one visible day because it
 		-- got trimmed this week stays filed under its real category.
-		if entry.isSingleDay then
+		--
+		-- Player-made events are exempt: they're almost always one day
+		-- long, so folding them into "singleDay" here would defeat the
+		-- whole point of giving player events their own distinct category
+		-- and color -- nearly every one of them would silently end up
+		-- coral instead of pink.
+		if entry.isSingleDay and entry.category ~= "custom" then
 			entry.category = "singleDay"
 		end
 	end

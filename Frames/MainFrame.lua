@@ -148,6 +148,7 @@ local FILTER_CHIP_DEFS = {
 	{ key = "seasonal",  label = "Seasonal / holiday", width = 162 },
 	{ key = "special",   label = "Special / limited",  width = 156 },
 	{ key = "singleDay", label = "Single-day",         width = 100 },
+	{ key = "custom",    label = "Player Events",      width = 120 },
 }
 
 local function BuildFilterChips(filterBar)

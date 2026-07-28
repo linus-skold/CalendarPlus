@@ -15,13 +15,12 @@ CalendarPlus.Colors = {
 	seasonal  = { r = 0.93, g = 0.68, b = 0.28 },
 	special   = { r = 0.86, g = 0.40, b = 0.30 },
 
-	-- Player-made invites (raid/dungeon/meeting signups) are a different axis
-	-- entirely from the systemwide feed above -- kept on the plain eventType
-	-- classification instead.
-	raid      = { r = 0.86, g = 0.34, b = 0.34 },
-	dungeon   = { r = 0.36, g = 0.74, b = 0.55 },
-	guild     = { r = 0.45, g = 0.75, b = 0.83 },
-	personal  = { r = 0.55, g = 0.55, b = 0.58 },
+	-- Player-made events -- anything you created yourself or were invited to
+	-- (raid/dungeon signups, guild/community events, meetings) -- are a
+	-- different axis entirely from the systemwide feed above, and are all
+	-- flattened into this one shared bucket/color/filter rather than split
+	-- by eventType, since the point is "all my player events" as one group.
+	custom    = { r = 0.80, g = 0.35, b = 0.65 },
 	default   = { r = 0.5,  g = 0.5,  b = 0.5 },
 
 	-- Pastel coral for events that only run a single day, regardless of
@@ -41,15 +40,6 @@ if factionGroup == "Horde" then
 elseif factionGroup == "Alliance" then
 	CalendarPlus.Colors.faction = { r = 0.16, g = 0.44, b = 0.80 }
 end
-
--- Player-made invites (calendarType PLAYER/GUILD/ARENA) map cleanly via
--- eventType. There is no Enum.CalendarEventType.Holiday -- Blizzard's own
--- systemwide feed is identified separately via calendarType == "HOLIDAY".
-CalendarPlus.EventTypeToCategory = {
-	[Enum.CalendarEventType.Raid]    = "raid",
-	[Enum.CalendarEventType.Dungeon] = "dungeon",
-	[Enum.CalendarEventType.Meeting] = "guild",
-}
 
 -- Blizzard's systemwide feed all comes back as calendarType == "HOLIDAY"
 -- regardless of what it actually is, and eventType is almost always just
@@ -83,9 +73,13 @@ local SYSTEM_FEED_PATTERNS = {
 }
 
 function CalendarPlus.Colors:GetForEvent(eventInfo)
+	-- Player-made events (calendarType PLAYER/GUILD/ARENA) -- anything you
+	-- created yourself or were invited to -- are one flat "custom" bucket
+	-- regardless of eventType (Raid/Dungeon/Meeting/Other). There is no
+	-- Enum.CalendarEventType.Holiday -- Blizzard's own systemwide feed is
+	-- identified separately via calendarType == "HOLIDAY" below.
 	if eventInfo.calendarType ~= "HOLIDAY" then
-		local category = CalendarPlus.EventTypeToCategory[eventInfo.eventType] or "personal"
-		return self[category], category
+		return self.custom, "custom"
 	end
 
 	local title = eventInfo.title or ""
