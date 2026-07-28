@@ -56,6 +56,26 @@ function provider:GetResetWeekday()
 	return ((today.weekday - 1 + daysForward) % 7) + 1
 end
 
+-- Forces C_Calendar's shared "currently selected month" to the real current
+-- month. Nothing else in this addon touches that selection anymore (the
+-- whole point of the cache rewrite), so it could be sitting on whatever
+-- ANY other code last left it at. That's fine for our own rendering (pure
+-- DateMath, doesn't care), but Blizzard's own day-context-menu code (see
+-- DayContextMenu.lua) resolves a dayButton's monthOffset via
+-- C_Calendar.GetMonthInfo(monthOffset) *relative to that same shared
+-- selection* -- so it must be anchored to "today" immediately before
+-- invoking any of that code, or an offset meant to be relative to today
+-- would resolve to the wrong month entirely. Guarded with the same flag
+-- RebuildEventCache uses so this doesn't also trigger a redundant rebuild
+-- via the watcher.
+function provider:AnchorToCurrentMonth()
+	EnsureOpened()
+	local today = C_DateAndTime.GetCurrentCalendarTime()
+	resolvingSelection = true
+	C_Calendar.SetAbsMonth(today.month, today.year)
+	resolvingSelection = false
+end
+
 -- Expansion-name enrichment for events like "Timewalking Dungeon Event" whose
 -- title alone doesn't say which expansion -- that only appears in the full
 -- description text. GetDayEvent's own description field turned out empty for

@@ -276,6 +276,7 @@ function CalendarPlus.RepaintMonth()
 					monthDay = displayDay,
 					isToday = serial == todaySerial and not isOtherMonth,
 					isOtherMonth = isOtherMonth,
+					serial = serial,
 				}
 			end
 

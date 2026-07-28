@@ -5,6 +5,11 @@ CalendarPlus = CalendarPlus or {}
 DayCellMixin = {}
 
 function DayCellMixin:OnPoolAcquire()
+	-- Required for OnEnter/OnLeave (the hover highlight below) and the
+	-- right-click handler to ever fire at all -- a plain Frame receives no
+	-- mouse events by default.
+	self:EnableMouse(true)
+
 	self.bg = self.bg or self:CreateTexture(nil, "BACKGROUND")
 	self.bg:SetAllPoints()
 	local panel2 = CalendarPlus.Colors.surface.panel2
@@ -48,9 +53,18 @@ function DayCellMixin:OnPoolAcquire()
 
 	self:SetScript("OnEnter", function(owner) owner.highlight:Show() end)
 	self:SetScript("OnLeave", function(owner) owner.highlight:Hide() end)
+	self:SetScript("OnMouseUp", function(owner, button)
+		if button == "RightButton" then
+			CalendarPlus.ShowDayContextMenu(owner, owner.serial)
+		end
+	end)
 end
 
-function DayCellMixin:SetData(monthDay, isToday, isOtherMonth)
+-- serial: the day's absolute DateMath serial day number (see Data/DateMath.lua)
+-- -- stashed so a right-click can work out which real (year, month, day) this
+-- cell is, even though the cell itself only ever displays a bare day number.
+function DayCellMixin:SetData(monthDay, isToday, isOtherMonth, serial)
+	self.serial = serial
 	self.dayNumber:SetText(monthDay)
 	self.todayBadge:SetShown(isToday)
 	self.todayHighlight:SetShown(isToday)

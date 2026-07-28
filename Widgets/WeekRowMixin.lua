@@ -76,7 +76,7 @@ function WeekRowMixin:SetWeek(dayCells, segments)
 		cell:ClearAllPoints()
 		cell:SetPoint("TOPLEFT", (col - 1) * self.colWidth, 0)
 		cell:SetSize(self.colWidth, height)
-		cell:SetData(day.monthDay, day.isToday, day.isOtherMonth)
+		cell:SetData(day.monthDay, day.isToday, day.isOtherMonth, day.serial)
 	end
 
 	for _, segment in ipairs(packed) do

@@ -15,6 +15,7 @@ Core\ObjectPools.lua
 
 Data\DateMath.lua
 Data\CalendarProvider.lua
+Data\DayContextMenu.lua
 
 Widgets\Layout.lua
 Widgets\EventBarMixin.lua
