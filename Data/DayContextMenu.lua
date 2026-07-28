@@ -43,77 +43,131 @@ local function GetRealDayButton()
 	return _G["CalendarDayButton1"]
 end
 
--- CalendarCreateEventFrame (the actual "Create Event" dialog) is
--- parent="CalendarFrame" in Blizzard's own XML, anchored TOPLEFT relative to
--- CalendarFrame's own TOPRIGHT. We never open the real CalendarFrame, so
--- even though Blizzard's code calls :Show() on the create-event dialog
--- successfully, it never actually becomes visible on screen -- WoW only
--- renders a frame if its *entire* ancestor chain is shown, not just the
--- frame itself. Parking CalendarFrame off-screen (rather than leaving it
--- hidden) satisfies that requirement without it visually intruding, and the
--- dialog's own anchor is then overridden to sit against the right edge of
--- CalendarPlus's own window instead of relative to its now-offscreen parent.
--- Left alone if
--- the player already has their real calendar open -- then everything already
--- works exactly as Blizzard intends, and forcibly moving their own open
--- window would be actively rude.
-local weParkedCalendarFrame = false
-
-local function EnsureCalendarFrameVisibleAncestor()
-	if CalendarFrame:IsShown() then return end
-
-	weParkedCalendarFrame = true
-	CalendarFrame:Show()
-	CalendarFrame:ClearAllPoints()
-	CalendarFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
-
-	if CalendarCreateEventFrame then
-		CalendarCreateEventFrame:ClearAllPoints()
-		CalendarCreateEventFrame:SetPoint("TOPLEFT", CalendarPlusMainFrame, "TOPRIGHT", 8, 0)
-
-		if not CalendarCreateEventFrame.calendarPlusHooked then
-			CalendarCreateEventFrame.calendarPlusHooked = true
-			CalendarCreateEventFrame:HookScript("OnHide", function()
-				if weParkedCalendarFrame then
-					weParkedCalendarFrame = false
-					CalendarFrame:Hide()
-				end
-			end)
-		end
+-- C_AddOns.LoadAddOn is the current API; older clients only had the bare
+-- global LoadAddOn, kept here as a fallback for safety. Returns true if the
+-- Blizzard Calendar UI globals this file depends on are actually available
+-- afterward.
+local function EnsureBlizzardCalendarLoaded()
+	if C_AddOns and C_AddOns.LoadAddOn then
+		C_AddOns.LoadAddOn("Blizzard_Calendar")
+	elseif LoadAddOn then
+		LoadAddOn("Blizzard_Calendar")
 	end
+	return MenuUtil and MenuUtil.CreateContextMenu and GenerateDayContextMenu and CalendarFrame
+end
+
+-- Both the create-event dialog (CalendarCreateEventFrame) and every "view
+-- this event" frame (CalendarViewHolidayFrame / CalendarViewEventFrame /
+-- CalendarViewRaidFrame) are parent="CalendarFrame" in Blizzard's own XML.
+-- We never open the real CalendarFrame, so even though Blizzard's code
+-- calls :Show() on any of these successfully, none of them actually become
+-- visible on screen -- WoW only renders a frame if its *entire* ancestor
+-- chain is shown, not just the frame itself. Parking CalendarFrame
+-- off-screen (rather than leaving it hidden) satisfies that requirement
+-- without it visually intruding.
+--
+-- Every one of those frames is ultimately shown via the single shared
+-- CalendarFrame_ShowEventFrame(frame) function, so hooking that once here
+-- (rather than repositioning each frame type individually at each call
+-- site) covers all of them uniformly, including any Blizzard adds in the
+-- future. Left alone entirely if the player already has their real
+-- calendar open -- then everything already works exactly as Blizzard
+-- intends, and forcibly moving their own open window would be actively
+-- rude, and forcibly relocating whatever it shows would be too.
+local weParkedCalendarFrame = false
+local hookedShowEventFrame = false
+
+-- Tracks whichever event-info frame Blizzard most recently showed via
+-- CalendarFrame_ShowEventFrame, and which event (by startSerial:eventIndex)
+-- ShowEventInfo last asked to open -- lets a second click on the same
+-- already-open event's bar toggle it closed instead of reopening/refreshing
+-- it (see ShowEventInfo below).
+local lastShownFrame
+local lastOpenedEventKey
+
+local function EnsureCalendarFrameParked()
+	if not CalendarFrame:IsShown() then
+		weParkedCalendarFrame = true
+		CalendarFrame:Show()
+		CalendarFrame:ClearAllPoints()
+		CalendarFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
+	end
+
+	if not hookedShowEventFrame then
+		hookedShowEventFrame = true
+		hooksecurefunc("CalendarFrame_ShowEventFrame", function(frame)
+			if not frame then return end
+			lastShownFrame = frame
+
+			if weParkedCalendarFrame then
+				frame:ClearAllPoints()
+				frame:SetPoint("TOPLEFT", CalendarPlusMainFrame, "TOPRIGHT", 8, 0)
+			end
+		end)
+	end
+end
+
+-- Restores CalendarFrame to hidden, but only if WE were the one who parked
+-- it and it's still us using it -- called from CalendarPlusMainFrame's own
+-- OnHide (see MainFrame.xml), not whenever some individual Blizzard dialog
+-- closes. An earlier version instead hid CalendarFrame from that dialog's
+-- own OnHide, on the theory that we should tidy up as soon as its info
+-- panel was done with -- but CalendarFrame itself isn't purely invisible
+-- infrastructure once shown (Blizzard's own OnShow/OnHide handling for it
+-- has side effects beyond this addon's control), so hiding it that eagerly,
+-- every single time any one dialog closed, was itself a visible disruption.
+-- Simplest fix: leave CalendarFrame parked for as long as CalendarPlus's own
+-- window stays open, and only tear it down when that closes too.
+function CalendarPlus.RestoreCalendarFrameIfParked()
+	if weParkedCalendarFrame then
+		weParkedCalendarFrame = false
+		CalendarFrame:Hide()
+	end
+end
+
+-- Both entry points below need a monthOffset relative to C_Calendar's own
+-- shared "currently selected month" -- which nothing else in this addon
+-- touches anymore (the whole point of the cache rewrite) -- so it has to be
+-- anchored to "today" first, or an offset meant to be relative to today
+-- resolves against whatever month was last selected by anything else.
+local function ResolveMonthOffset(serial)
+	local year, month = CalendarPlus.DateMath.FromSerial(serial)
+	local today = C_DateAndTime.GetCurrentCalendarTime()
+	local baseIndex = today.year * 12 + (today.month - 1)
+	return (year * 12 + (month - 1)) - baseIndex
+end
+
+-- Called when CalendarPlus's own window opens (see MainFrame.lua), so the
+-- real CalendarFrame and its whole family of dialogs already exist and are
+-- parked off-screen ahead of time, rather than only getting loaded/parked
+-- reactively on the first right-click or event click. Silent on failure
+-- (unlike the two functions below) since this is just warming things up in
+-- the background, not a direct response to the player asking for a menu.
+function CalendarPlus.EnsureCalendarUIReady()
+	if not EnsureBlizzardCalendarLoaded() then return end
+	EnsureCalendarFrameParked()
 end
 
 -- serial: the day cell's absolute DateMath serial day number.
 function CalendarPlus.ShowDayContextMenu(cellFrame, serial)
 	if not serial then return end
 
-	local year, month, day = CalendarPlus.DateMath.FromSerial(serial)
-	local today = C_DateAndTime.GetCurrentCalendarTime()
-	local baseIndex = today.year * 12 + (today.month - 1)
-	local monthOffset = (year * 12 + (month - 1)) - baseIndex
+	local _, _, day = CalendarPlus.DateMath.FromSerial(serial)
+	local monthOffset = ResolveMonthOffset(serial)
 
-	-- C_AddOns.LoadAddOn is the current API; older clients only had the
-	-- bare global LoadAddOn, kept here as a fallback for safety.
-	if C_AddOns and C_AddOns.LoadAddOn then
-		C_AddOns.LoadAddOn("Blizzard_Calendar")
-	elseif LoadAddOn then
-		LoadAddOn("Blizzard_Calendar")
-	end
-
-	local realDayButton = GetRealDayButton()
-	if not (MenuUtil and MenuUtil.CreateContextMenu and GenerateDayContextMenu and realDayButton) then
+	if not EnsureBlizzardCalendarLoaded() then
 		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (Blizzard's own Calendar UI wasn't available).")
 		return
 	end
 
-	-- GenerateDayContextMenu and, later, CalendarCreateEventFrame_Update both
-	-- resolve dayButton.monthOffset via C_Calendar.GetMonthInfo(monthOffset)
-	-- *relative to C_Calendar's own shared "currently selected month"* -- our
-	-- monthOffset above is computed relative to today, so that selection has
-	-- to actually be sitting on today's month right now, or this resolves to
-	-- the wrong month entirely.
+	local realDayButton = GetRealDayButton()
+	if not realDayButton then
+		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (Blizzard's own Calendar UI wasn't available).")
+		return
+	end
+
 	CalendarPlus.CalendarProvider:AnchorToCurrentMonth()
-	EnsureCalendarFrameVisibleAncestor()
+	EnsureCalendarFrameParked()
 
 	realDayButton.day = day
 	realDayButton.monthOffset = monthOffset
@@ -126,4 +180,48 @@ function CalendarPlus.ShowDayContextMenu(cellFrame, serial)
 	if not ok then
 		print("|cff33ff99CalendarPlus|r: couldn't open the calendar's event menu (" .. tostring(err) .. ").")
 	end
+end
+
+-- startSerial/eventIndex: identify exactly which C_Calendar day+index this
+-- rendered event bar represents (see CalendarProvider's eventIndex field,
+-- captured on whichever day the event's own entry was first created --
+-- always a valid day for that event, since it's the day it actually
+-- occupies in Blizzard's own per-day event list).
+--
+-- C_Calendar.OpenEvent kicks off an async fetch; Blizzard's own CalendarFrame
+-- (already loaded, registered for CALENDAR_OPEN_EVENT since its own OnLoad,
+-- regardless of whether it's shown) reacts on its own once that completes,
+-- deciding for us whether to show CalendarViewHolidayFrame,
+-- CalendarViewEventFrame, CalendarViewRaidFrame, or CalendarCreateEventFrame
+-- in edit mode (if you can edit this particular event) -- nothing further
+-- to do here beyond making sure whichever one it picks actually renders
+-- (see EnsureCalendarFrameParked).
+function CalendarPlus.ShowEventInfo(startSerial, eventIndex)
+	if not startSerial or not eventIndex then return end
+
+	local eventKey = startSerial .. ":" .. eventIndex
+	if eventKey == lastOpenedEventKey and lastShownFrame and lastShownFrame:IsShown() then
+		lastShownFrame:Hide()
+		lastOpenedEventKey = nil
+		return
+	end
+
+	local _, _, day = CalendarPlus.DateMath.FromSerial(startSerial)
+	local monthOffset = ResolveMonthOffset(startSerial)
+
+	if not EnsureBlizzardCalendarLoaded() then
+		print("|cff33ff99CalendarPlus|r: couldn't open this event's info (Blizzard's own Calendar UI wasn't available).")
+		return
+	end
+
+	if not (C_Calendar and C_Calendar.OpenEvent) then
+		print("|cff33ff99CalendarPlus|r: couldn't open this event's info (C_Calendar.OpenEvent wasn't available).")
+		return
+	end
+
+	CalendarPlus.CalendarProvider:AnchorToCurrentMonth()
+	EnsureCalendarFrameParked()
+
+	lastOpenedEventKey = eventKey
+	C_Calendar.OpenEvent(monthOffset, day, eventIndex)
 end

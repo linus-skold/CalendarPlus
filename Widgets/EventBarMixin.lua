@@ -15,6 +15,20 @@ local CAP_WIDTH = 18
 
 function EventBarMixin:OnPoolAcquire()
 	self:SetHeight(CalendarPlus.Layout.LANE_HEIGHT)
+	self:EnableMouse(true)
+	-- Day cells and event bars are sibling frames under the same week row,
+	-- and a day cell's own height spans the whole row (not just its header),
+	-- so it fully overlaps every bar drawn beneath it. Both default to the
+	-- same frame level as plain same-parent siblings, which left mouse
+	-- hit-testing to an unspecified tie-break that was landing on the day
+	-- cell -- explicitly raising bars above their row guarantees they win
+	-- clicks in their own area regardless of creation order.
+	self:SetFrameLevel(self:GetParent():GetFrameLevel() + 2)
+	self:SetScript("OnMouseUp", function(owner, button)
+		if button == "LeftButton" then
+			CalendarPlus.ShowEventInfo(owner.startSerial, owner.eventIndex)
+		end
+	end)
 
 	-- RoundMaskLeft/Right.tga are white-with-alpha sprites (opaque inside the
 	-- rounded shape, transparent outside), so they can be tinted and shown
@@ -27,6 +41,18 @@ function EventBarMixin:OnPoolAcquire()
 
 	self.fill = self.fill or self:CreateTexture(nil, "ARTWORK")
 	self.fill:SetColorTexture(1, 1, 1, 1)
+
+	-- Plain Frames (unlike FilterChipMixin's Buttons) don't get the
+	-- automatic "HIGHLIGHT layer shows on hover" behavior, so this needs
+	-- explicit OnEnter/OnLeave scripts instead -- same technique as
+	-- DayCellMixin's own hover highlight. Sits above the fill/caps/edge
+	-- accent but below the label so the title stays readable while hovering.
+	self.hoverHighlight = self.hoverHighlight or self:CreateTexture(nil, "ARTWORK", nil, 2)
+	self.hoverHighlight:SetAllPoints()
+	self.hoverHighlight:SetColorTexture(1, 1, 1, 0.18)
+	self.hoverHighlight:Hide()
+	self:SetScript("OnEnter", function(owner) owner.hoverHighlight:Show() end)
+	self:SetScript("OnLeave", function(owner) owner.hoverHighlight:Hide() end)
 
 	-- Thin gold top/bottom edge accent (same treatment as FilterChipMixin's
 	-- chips), giving the bar a framed, ornate-parchment feel instead of a
@@ -69,6 +95,11 @@ end
 -- whatever color was chosen.
 function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.categoryKey = segment.category
+	-- Stashed for the click handler above -- see CalendarPlus.ShowEventInfo
+	-- (Data/DayContextMenu.lua), which needs to know exactly which
+	-- C_Calendar day+index this bar represents to reopen it.
+	self.startSerial = segment.startSerial
+	self.eventIndex = segment.eventIndex
 	local color = segment.colorOverride
 		or (segment.isSingleDay and segment.category ~= "custom" and CalendarPlus.Colors.singleDay)
 		or CalendarPlus.Colors[segment.category]
@@ -128,5 +159,6 @@ function EventBarMixin:Reset()
 	self:ClearAllPoints()
 	self.capLeft:Hide()
 	self.capRight:Hide()
+	self.hoverHighlight:Hide()
 	self:Hide()
 end

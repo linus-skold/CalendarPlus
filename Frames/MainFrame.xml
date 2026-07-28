@@ -92,6 +92,9 @@
 			<OnShow>
 				CalendarPlus.MainFrame_OnShow(self)
 			</OnShow>
+			<OnHide>
+				CalendarPlus.RestoreCalendarFrameIfParked()
+			</OnHide>
 			<OnMouseDown>
 				self:StartMoving()
 			</OnMouseDown>

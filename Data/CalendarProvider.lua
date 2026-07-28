@@ -220,6 +220,13 @@ local function BuildEvents()
 						isStart = true, isEnd = false,
 						title = displayTitle, category = category, colorOverride = colorOverride,
 						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
+						-- eventIndex is C_Calendar's own per-day event index
+						-- (the "i" this event was found at, on its startSerial
+						-- day specifically) -- kept so clicking the rendered
+						-- bar can later call C_Calendar.OpenEvent(monthOffset,
+						-- day, eventIndex) to show Blizzard's own info panel
+						-- for exactly this event (see DayContextMenu.lua).
+						eventIndex = i,
 					}
 					events[#events + 1] = entry
 					if ev.eventID then openByEventID[ev.eventID] = entry end
@@ -241,6 +248,7 @@ local function BuildEvents()
 						isEnd = seq ~= "START" and seq ~= "ONGOING",
 						title = displayTitle, category = category, colorOverride = colorOverride,
 						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
+						eventIndex = i,
 					}
 					events[#events + 1] = entry
 					if ev.eventID and seq == "ONGOING" then

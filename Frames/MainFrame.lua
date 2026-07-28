@@ -102,6 +102,7 @@ local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 					isStart = entry.isStart, isEnd = entry.isEnd,
 					title = entry.title, category = entry.category, colorOverride = entry.colorOverride,
 					isSingleDay = entry.startSerial == endSerial and entry.isStart and entry.isEnd,
+					eventIndex = entry.eventIndex,
 				}
 			end
 		end
@@ -135,6 +136,7 @@ local function ClipEventsToWeek(events, weekFirstSerial, weekLastSerial, monthFi
 				title = ev.title, category = ev.category, colorOverride = ev.colorOverride,
 				isSingleDay = ev.isSingleDay,
 				realColStart = realColStart, realColEnd = realColEnd,
+				startSerial = ev.startSerial, eventIndex = ev.eventIndex,
 			}
 		end
 	end
@@ -344,6 +346,12 @@ end
 function CalendarPlus.MainFrame_OnShow()
 	currentOffset = 0
 	CalendarPlus.RepaintMonth()
+
+	-- Warms up Blizzard's own Calendar UI (loads Blizzard_Calendar, parks
+	-- the real CalendarFrame off-screen) as soon as our window opens,
+	-- instead of only doing that reactively the first time the player
+	-- right-clicks a day or clicks an event -- see DayContextMenu.lua.
+	CalendarPlus.EnsureCalendarUIReady()
 end
 
 function CalendarPlus.ToggleMainFrame()
