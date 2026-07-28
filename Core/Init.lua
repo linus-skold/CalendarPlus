@@ -6,6 +6,7 @@ local addon = CalendarPlus
 local defaultAccountDB = {
 	weekStartDay = 2, -- 1=Sunday..7=Saturday (C_DateAndTime convention); 2=Monday
 	trimWeeklyEventsAtReset = true,
+	unlistedEvents = {}, -- eventKey (see CalendarProvider:GetKnownEventKeys) -> true (hidden). Everything listed by default.
 }
 
 local defaultCharDB = {}

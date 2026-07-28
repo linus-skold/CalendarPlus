@@ -1,6 +1,6 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
 	<Frame name="CalendarPlusMainFrame" inherits="BackdropTemplate" toplevel="true" parent="UIParent" movable="true" enableMouse="true" hidden="true">
-		<Size x="920" y="520"/>
+		<Size x="1030" y="520"/>
 		<Anchors>
 			<Anchor point="CENTER"/>
 		</Anchors>
@@ -28,7 +28,7 @@
 						</Anchors>
 					</Button>
 					<Frame name="$parentFilterBar" parentKey="FilterBar">
-						<Size x="670" y="20"/>
+						<Size x="780" y="20"/>
 						<Anchors>
 							<Anchor point="RIGHT"/>
 						</Anchors>

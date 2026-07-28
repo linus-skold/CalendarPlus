@@ -57,6 +57,12 @@ CalendarPlus.EventTypeToCategory = {
 -- apart from bonus events, monthly contests, real holidays, and one-off
 -- promos. The only signal left is the title, patterned after the reference
 -- mockup's own category assignments for these exact event names.
+-- Only used for the 5-bucket color/category classification below -- the
+-- Listed/Unlisted event picker (see CalendarProvider:GetKnownEventKeys) keys
+-- off each event's actual resolved title instead of this pattern list, so
+-- every distinct event (each individual PvP Brawl variant, each specific
+-- one-off promo) gets its own row rather than being lumped into a shared
+-- "Timewalking"/"Other" bucket.
 local SYSTEM_FEED_PATTERNS = {
 	{ pattern = "Timewalking", category = "weekly" },
 	{ pattern = "PvP Brawl", category = "weekly" },
@@ -73,6 +79,7 @@ local SYSTEM_FEED_PATTERNS = {
 	{ pattern = "Children's Week", category = "seasonal" },
 	{ pattern = "Pilgrim's Bounty", category = "seasonal" },
 	{ pattern = "Noblegarden", category = "seasonal" },
+	{ pattern = "Anniversary", category = "seasonal" },
 }
 
 function CalendarPlus.Colors:GetForEvent(eventInfo)
@@ -90,7 +97,8 @@ function CalendarPlus.Colors:GetForEvent(eventInfo)
 
 	-- Unrecognized systemwide feed entry -- one-off/limited-time promos
 	-- (Turbulent Timeways, Auction House Dance Party, etc.) are the natural
-	-- catch-all here.
+	-- catch-all here for COLOR purposes only; the Listed/Unlisted picker
+	-- still lists each one individually by its own title.
 	return self.special, "special"
 end
 

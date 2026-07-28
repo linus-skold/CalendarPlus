@@ -167,12 +167,35 @@ local function BuildEvents()
 				local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
 				local open = ev.eventID and openByEventID[ev.eventID]
 
+				-- Listed/Unlisted keys off the fully-resolved display title
+				-- itself (e.g. "Timewalking: Classic", or a PvP Brawl's own
+				-- specific name) rather than a fixed pattern list, so every
+				-- distinct event gets its own row with nothing lumped into a
+				-- shared catch-all -- nil for player-made events (arbitrary
+				-- titles, not listable by name at all).
+				--
+				-- The one deliberate exception: the yearly Anniversary
+				-- celebration's title changes every year ("15th Anniversary",
+				-- "16th Anniversary", ...), which would otherwise make each
+				-- year's occurrence its own permanent, never-reused row in
+				-- the picker. It's really the same recurring event, so it's
+				-- grouped under one shared key regardless of which year's
+				-- title it actually is.
+				local eventKey
+				if ev.calendarType == "HOLIDAY" then
+					if displayTitle and displayTitle:find("Anniversary", 1, true) then
+						eventKey = "Anniversary"
+					else
+						eventKey = displayTitle
+					end
+				end
+
 				if seq == "START" then
 					local entry = {
 						startSerial = serial, endSerial = serial,
 						isStart = true, isEnd = false,
 						title = displayTitle, category = category, colorOverride = colorOverride,
-						numSequenceDays = ev.numSequenceDays,
+						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
 					}
 					events[#events + 1] = entry
 					if ev.eventID then openByEventID[ev.eventID] = entry end
@@ -193,7 +216,7 @@ local function BuildEvents()
 						isStart = seq ~= "ONGOING" and seq ~= "END",
 						isEnd = seq ~= "START" and seq ~= "ONGOING",
 						title = displayTitle, category = category, colorOverride = colorOverride,
-						numSequenceDays = ev.numSequenceDays,
+						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
 					}
 					events[#events + 1] = entry
 					if ev.eventID and seq == "ONGOING" then
@@ -206,6 +229,16 @@ local function BuildEvents()
 
 	for _, entry in ipairs(events) do
 		entry.isSingleDay = entry.startSerial == entry.endSerial and entry.isStart and entry.isEnd
+		-- Single-day events get their own filter bucket instead of whichever
+		-- category GetForEvent originally classified them under, matching
+		-- the flat coral color EventBarMixin already gives them regardless
+		-- of category. This is a build-time (genuine single-day) call, not
+		-- the render-time isSingleDay recompute in MainFrame's weekly-reset
+		-- trim -- an event that only *becomes* one visible day because it
+		-- got trimmed this week stays filed under its real category.
+		if entry.isSingleDay then
+			entry.category = "singleDay"
+		end
 	end
 
 	return events
@@ -244,6 +277,28 @@ function provider:GetEventCache()
 	end
 
 	return cache and cache.events or {}
+end
+
+-- Every distinct named (systemwide-feed, i.e. eventKey ~= nil) event
+-- currently present in the cache, alphabetically, each tagged with its true
+-- classification category (entry.namedCategory, never overwritten by the
+-- singleDay filter-bucket override -- see BuildEvents). Backs both the
+-- Settings panel's Listed/Unlisted picker and MainFrame's category-chip
+-- visibility check. Since this only reflects whatever actually occurred
+-- within the cache's build window, an event that hasn't happened yet (or
+-- already scrolled out of it) simply won't appear here until it does.
+function provider:GetKnownEventKeys()
+	local events = self:GetEventCache()
+	local seen = {}
+	local list = {}
+	for _, entry in ipairs(events) do
+		if entry.eventKey and not seen[entry.eventKey] then
+			seen[entry.eventKey] = true
+			list[#list + 1] = { key = entry.eventKey, category = entry.namedCategory }
+		end
+	end
+	table.sort(list, function(a, b) return a.key < b.key end)
+	return list
 end
 
 local watcher = CreateFrame("Frame")

@@ -76,10 +76,11 @@ local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 	local events = CalendarPlus.CalendarProvider:GetEventCache()
 	local trimEnabled = not CalendarPlus.db or CalendarPlus.db.trimWeeklyEventsAtReset ~= false
 	local resetWeekday = trimEnabled and CalendarPlus.CalendarProvider:GetResetWeekday() or nil
+	local unlisted = CalendarPlus.db and CalendarPlus.db.unlistedEvents or {}
 
 	local visible = {}
 	for _, entry in ipairs(events) do
-		if activeCategoryFilters[entry.category] ~= false then
+		if activeCategoryFilters[entry.category] ~= false and not (entry.eventKey and unlisted[entry.eventKey]) then
 			local endSerial = entry.endSerial
 
 			-- Weekly-cadence events (Timewalking, PvP Brawls, etc.) often
@@ -140,33 +141,75 @@ local function ClipEventsToWeek(events, weekFirstSerial, weekLastSerial, monthFi
 	return weekSegments
 end
 
+local FILTER_CHIP_DEFS = {
+	{ key = "weekly",    label = "Weekly rotation",    width = 128 },
+	{ key = "bonus",     label = "Bonus event",        width = 104 },
+	{ key = "monthly",   label = "Monthly",            width = 84 },
+	{ key = "seasonal",  label = "Seasonal / holiday", width = 162 },
+	{ key = "special",   label = "Special / limited",  width = 156 },
+	{ key = "singleDay", label = "Single-day",         width = 100 },
+}
+
 local function BuildFilterChips(filterBar)
 	if #filterChips > 0 then return filterChips end
 
 	local pool = CalendarPlus:CreatePool(filterBar, "Button", nil, FilterChipMixin, function(_, f) f:Reset() end)
-	local order = {
-		{ key = "weekly",   label = "Weekly rotation",     width = 128 },
-		{ key = "bonus",    label = "Bonus event",         width = 104 },
-		{ key = "monthly",  label = "Monthly",             width = 84 },
-		{ key = "seasonal", label = "Seasonal / holiday",  width = 162 },
-		{ key = "special",  label = "Special / limited",   width = 156 },
-	}
-	local x = 0
-	for _, entry in ipairs(order) do
+	for _, entry in ipairs(FILTER_CHIP_DEFS) do
 		local chip = pool:Acquire()
 		chip:SetParent(filterBar)
 		chip:SetSize(entry.width, 20)
-		chip:ClearAllPoints()
-		chip:SetPoint("LEFT", x, 0)
 		chip:SetData(entry.key, entry.label, function(catKey, active)
 			activeCategoryFilters[catKey] = active
 			CalendarPlus.RepaintMonth()
 		end)
 		activeCategoryFilters[entry.key] = true
-		x = x + entry.width + 6
+		chip.def = entry
 		filterChips[#filterChips + 1] = chip
 	end
 	return filterChips
+end
+
+-- A category's chip only makes sense to show while at least one of its named
+-- events (see CalendarProvider:GetKnownEventKeys) is Listed -- if every one
+-- has been moved to Unlisted via the Settings panel's shuttle picker,
+-- nothing in that category could ever appear on the calendar regardless of
+-- the chip's own on/off state, so the chip is hidden instead of sitting
+-- there as a dead toggle. A category with zero known events at all (nothing
+-- of that kind has occurred within the cache's build window yet) is treated
+-- as still having listed members -- only a category the user has actually,
+-- deliberately emptied out gets its chip hidden. singleDay isn't a
+-- named-event category (it's the isSingleDay override applied in
+-- CalendarProvider, cutting across all categories), so it has no members
+-- here and always stays visible.
+local function CategoryHasListedMembers(category)
+	local unlisted = CalendarPlus.db and CalendarPlus.db.unlistedEvents or {}
+	local hasMembers = false
+	for _, entry in ipairs(CalendarPlus.CalendarProvider:GetKnownEventKeys()) do
+		if entry.category == category then
+			hasMembers = true
+			if not unlisted[entry.key] then
+				return true
+			end
+		end
+	end
+	return not hasMembers
+end
+
+-- Re-flows the chip row every repaint so a category chip that just lost its
+-- last Listed member disappears (and the rest close the gap) immediately,
+-- without needing the chips to have been built in a fixed order/position.
+local function LayoutFilterChips()
+	local x = 0
+	for _, chip in ipairs(filterChips) do
+		if CategoryHasListedMembers(chip.def.key) then
+			chip:Show()
+			chip:ClearAllPoints()
+			chip:SetPoint("LEFT", x, 0)
+			x = x + chip.def.width + 6
+		else
+			chip:Hide()
+		end
+	end
 end
 
 -- Lays out the currently-selected month (currentOffset months from today)
@@ -195,6 +238,7 @@ function CalendarPlus.RepaintMonth()
 	frame.TopBar.MonthLabel:SetText(monthName .. " " .. year)
 
 	UpdateDowHeader()
+	LayoutFilterChips()
 
 	-- DateMath's weekday is 1=Sunday..7=Saturday; convert to a 0-based
 	-- column offset relative to the user's configured week-start day.
