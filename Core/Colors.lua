@@ -5,12 +5,12 @@ CalendarPlus = CalendarPlus or {}
 -- Ports the CSS custom-property palette from the mockup into plain Lua tables.
 CalendarPlus.Colors = {
 	-- Blizzard's rotating systemwide feed (Timewalking, PvP Brawls, bonus
-	-- events, real holidays, one-off promos), matching the reference
-	-- mockup's 5-category legend: Weekly rotation / Bonus event / Monthly /
-	-- Seasonal-holiday / Special-limited. See GetForEvent for how a given
-	-- event lands in one of these.
+	-- events, real holidays, one-off promos). See GetForEvent for how a
+	-- given event lands in one of these. No dedicated "bonus" bucket
+	-- anymore -- the weekly-cadence bonus events moved to "weekly", and
+	-- anything else titled "...Bonus Event" falls through to the "special"
+	-- catch-all instead.
 	weekly    = { r = 0.35, g = 0.62, b = 0.93 },
-	bonus     = { r = 0.42, g = 0.53, b = 0.90 },
 	monthly   = { r = 0.62, g = 0.44, b = 0.86 },
 	seasonal  = { r = 0.93, g = 0.68, b = 0.28 },
 	special   = { r = 0.86, g = 0.40, b = 0.30 },
@@ -56,7 +56,15 @@ end
 local SYSTEM_FEED_PATTERNS = {
 	{ pattern = "Timewalking", category = "weekly" },
 	{ pattern = "PvP Brawl", category = "weekly" },
-	{ pattern = "Bonus Event", category = "bonus" },
+	-- These four specific bonus/dungeon events actually run on a weekly
+	-- cadence like Timewalking/PvP Brawl, unlike most other "...Bonus
+	-- Event" titles -- no dedicated "bonus" category exists anymore, so
+	-- anything else titled "...Bonus Event" just falls through to the
+	-- "special" catch-all at the bottom of GetForEvent instead.
+	{ pattern = "Pet Battle Bonus Event", category = "weekly" },
+	{ pattern = "Delves Bonus Event", category = "weekly" },
+	{ pattern = "Arena Skirmish Bonus Event", category = "weekly" },
+	{ pattern = "Midnight Dungeon Event", category = "weekly" },
 	{ pattern = "Darkmoon Faire", category = "monthly" },
 	{ pattern = "Trial of Style", category = "monthly" },
 	{ pattern = "Fire Festival", category = "seasonal" },

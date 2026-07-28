@@ -143,7 +143,6 @@ end
 
 local FILTER_CHIP_DEFS = {
 	{ key = "weekly",    label = "Weekly rotation",    width = 128 },
-	{ key = "bonus",     label = "Bonus event",        width = 104 },
 	{ key = "monthly",   label = "Monthly",            width = 84 },
 	{ key = "seasonal",  label = "Seasonal / holiday", width = 162 },
 	{ key = "special",   label = "Special / limited",  width = 156 },
