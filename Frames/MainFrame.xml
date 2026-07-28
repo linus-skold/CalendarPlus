@@ -5,10 +5,24 @@
 			<Anchor point="CENTER"/>
 		</Anchors>
 		<Frames>
-			<Button name="$parentCloseButton" inherits="UIPanelCloseButton">
+			<Button name="$parentCloseButton" parentKey="CloseButton" inherits="UIPanelCloseButton">
 				<Anchors>
 					<Anchor point="TOPRIGHT" x="-4" y="-4"/>
 				</Anchors>
+			</Button>
+			<Button name="$parentSettingsButton" parentKey="SettingsButton" inherits="UIPanelButtonTemplate">
+				<Size x="72" y="22"/>
+				<Anchors>
+					<Anchor point="RIGHT" relativeKey="$parent.CloseButton" relativePoint="LEFT" x="-8"/>
+				</Anchors>
+				<Scripts>
+					<OnLoad>
+						self:SetText("Settings")
+					</OnLoad>
+					<OnClick>
+						CalendarPlus.OpenSettings()
+					</OnClick>
+				</Scripts>
 			</Button>
 			<Frame name="$parentTopBar" parentKey="TopBar">
 				<Size x="0" y="36"/>

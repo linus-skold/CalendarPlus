@@ -55,6 +55,22 @@ local function BuildSettingsPanel()
 	BuildEventListSubcategory(category)
 
 	Settings.RegisterAddOnCategory(category)
+
+	-- Kept so the main window's settings-gear button (see MainFrame.xml) can
+	-- jump straight here instead of the player hunting for it in the game
+	-- menu's full AddOns list.
+	CalendarPlus.settingsCategory = category
+end
+
+-- Settings.OpenToCategory has a well-known Blizzard quirk where the very
+-- first call in a session (before the Settings frame has ever been shown)
+-- opens the frame but doesn't actually select the requested category --
+-- calling it twice is the standard workaround.
+function CalendarPlus.OpenSettings()
+	if not CalendarPlus.settingsCategory then return end
+	local id = CalendarPlus.settingsCategory:GetID()
+	Settings.OpenToCategory(id)
+	Settings.OpenToCategory(id)
 end
 
 -- Listed/Unlisted shuttle picker for individual named events (see
