@@ -1,0 +1,25 @@
+## Interface: 120007
+## Title: CalendarPlus
+## Notes: Reskinned calendar with multi-day event spans and category filters
+## Author: You
+## Version: 1.0.0
+## SavedVariables: CalendarPlusDB
+## SavedVariablesPerCharacter: CalendarPlusCharDB
+## IconTexture: Interface\Icons\INV_Misc_Calendar_01
+
+Core\Init.lua
+Core\EventBus.lua
+Core\Options.lua
+Core\Colors.lua
+Core\ObjectPools.lua
+
+Data\CalendarProvider.lua
+
+Widgets\Layout.lua
+Widgets\EventBarMixin.lua
+Widgets\DayCellMixin.lua
+Widgets\WeekRowMixin.lua
+Widgets\FilterChipMixin.lua
+
+Frames\MainFrame.lua
+Frames\MainFrame.xml

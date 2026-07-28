@@ -1,0 +1,77 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Frame name="CalendarPlusMainFrame" inherits="BackdropTemplate" toplevel="true" parent="UIParent" movable="true" enableMouse="true" hidden="true">
+		<Size x="920" y="520"/>
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<Frames>
+			<Button name="$parentCloseButton" inherits="UIPanelCloseButton">
+				<Anchors>
+					<Anchor point="TOPRIGHT" x="-4" y="-4"/>
+				</Anchors>
+			</Button>
+			<Frame name="$parentTopBar" parentKey="TopBar">
+				<Size x="0" y="36"/>
+				<Anchors>
+					<Anchor point="TOPLEFT" x="16" y="-16"/>
+					<Anchor point="TOPRIGHT" x="-16" y="-16"/>
+				</Anchors>
+				<Frames>
+					<Button name="$parentPrevMonth" parentKey="PrevMonth" inherits="UIPanelScrollUpButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT"/>
+						</Anchors>
+					</Button>
+					<Button name="$parentNextMonth" parentKey="NextMonth" inherits="UIPanelScrollDownButtonTemplate">
+						<Anchors>
+							<Anchor point="LEFT" relativeKey="$parent.PrevMonth" relativePoint="RIGHT" x="4"/>
+						</Anchors>
+					</Button>
+					<Frame name="$parentFilterBar" parentKey="FilterBar">
+						<Size x="670" y="20"/>
+						<Anchors>
+							<Anchor point="RIGHT"/>
+						</Anchors>
+					</Frame>
+				</Frames>
+				<Layers>
+					<Layer level="OVERLAY">
+						<FontString name="$parentMonthLabel" parentKey="MonthLabel" inherits="GameFontNormalLarge">
+							<Anchors>
+								<Anchor point="LEFT" relativeKey="$parent.NextMonth" relativePoint="RIGHT" x="10"/>
+							</Anchors>
+						</FontString>
+					</Layer>
+				</Layers>
+			</Frame>
+			<Frame name="$parentDowHeader" parentKey="DowHeader">
+				<Size y="18"/>
+				<Anchors>
+					<Anchor point="TOPLEFT" relativeKey="$parent.TopBar" relativePoint="BOTTOMLEFT" y="-10"/>
+					<Anchor point="TOPRIGHT" relativeKey="$parent.TopBar" relativePoint="BOTTOMRIGHT" y="-10"/>
+				</Anchors>
+			</Frame>
+			<Frame name="$parentGrid" parentKey="Grid">
+				<Size y="420"/>
+				<Anchors>
+					<Anchor point="TOPLEFT" relativeKey="$parent.DowHeader" relativePoint="BOTTOMLEFT" y="-4"/>
+					<Anchor point="TOPRIGHT" relativeKey="$parent.DowHeader" relativePoint="BOTTOMRIGHT" y="-4"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+		<Scripts>
+			<OnLoad>
+				CalendarPlus.MainFrame_OnLoad(self)
+			</OnLoad>
+			<OnShow>
+				CalendarPlus.MainFrame_OnShow(self)
+			</OnShow>
+			<OnMouseDown>
+				self:StartMoving()
+			</OnMouseDown>
+			<OnMouseUp>
+				self:StopMovingOrSizing()
+			</OnMouseUp>
+		</Scripts>
+	</Frame>
+</Ui>
