@@ -54,6 +54,21 @@ function FilterChipMixin:OnPoolAcquire()
 	self.highlight:SetColorTexture(1, 1, 1, 0.15)
 	self.highlight:SetBlendMode("ADD")
 
+	-- Thin gold top/bottom edge accent, matching EventBarMixin's bars --
+	-- ties the chips into the same warm-parchment framing instead of
+	-- looking like a plain flat pill.
+	self.edgeTop = self.edgeTop or self:CreateTexture(nil, "ARTWORK", nil, 1)
+	self.edgeTop:SetHeight(1)
+	self.edgeTop:SetPoint("TOPLEFT", CAP_WIDTH * 0.4, 0)
+	self.edgeTop:SetPoint("TOPRIGHT", -CAP_WIDTH * 0.4, 0)
+	self.edgeBottom = self.edgeBottom or self:CreateTexture(nil, "ARTWORK", nil, 1)
+	self.edgeBottom:SetHeight(1)
+	self.edgeBottom:SetPoint("BOTTOMLEFT", CAP_WIDTH * 0.4, 0)
+	self.edgeBottom:SetPoint("BOTTOMRIGHT", -CAP_WIDTH * 0.4, 0)
+	local accent = CalendarPlus.Colors.surface.accent
+	self.edgeTop:SetColorTexture(accent.r, accent.g, accent.b, 0.5)
+	self.edgeBottom:SetColorTexture(accent.r, accent.g, accent.b, 0.5)
+
 	self:SetScript("OnClick", function(owner)
 		owner.active = not owner.active
 		owner:Refresh()
@@ -77,13 +92,17 @@ end
 function FilterChipMixin:Refresh()
 	local r, g, b, a
 	if self.active then
-		r, g, b, a = 0.2, 0.2, 0.22, 1
+		local card = CalendarPlus.Colors.surface.card
+		r, g, b, a = card.r, card.g, card.b, 1
 	else
-		r, g, b, a = 0.1, 0.1, 0.11, 0.5
+		local panel2 = CalendarPlus.Colors.surface.panel2
+		r, g, b, a = panel2.r, panel2.g, panel2.b, 0.5
 	end
 	self.capLeft:SetVertexColor(r, g, b, a)
 	self.capRight:SetVertexColor(r, g, b, a)
 	self.fill:SetVertexColor(r, g, b, a)
+	self.edgeTop:SetShown(self.active)
+	self.edgeBottom:SetShown(self.active)
 end
 
 function FilterChipMixin:Reset()

@@ -31,15 +31,27 @@
 					<Anchor point="TOPRIGHT" x="-16" y="-16"/>
 				</Anchors>
 				<Frames>
-					<Button name="$parentPrevMonth" parentKey="PrevMonth" inherits="UIPanelScrollUpButtonTemplate">
+					<Button name="$parentPrevMonth" parentKey="PrevMonth" inherits="UIPanelButtonTemplate">
+						<Size x="24" y="22"/>
 						<Anchors>
 							<Anchor point="LEFT"/>
 						</Anchors>
+						<Scripts>
+							<OnLoad>
+								self:SetText("&lt;")
+							</OnLoad>
+						</Scripts>
 					</Button>
-					<Button name="$parentNextMonth" parentKey="NextMonth" inherits="UIPanelScrollDownButtonTemplate">
+					<Button name="$parentNextMonth" parentKey="NextMonth" inherits="UIPanelButtonTemplate">
+						<Size x="24" y="22"/>
 						<Anchors>
 							<Anchor point="LEFT" relativeKey="$parent.PrevMonth" relativePoint="RIGHT" x="4"/>
 						</Anchors>
+						<Scripts>
+							<OnLoad>
+								self:SetText("&gt;")
+							</OnLoad>
+						</Scripts>
 					</Button>
 					<Frame name="$parentFilterBar" parentKey="FilterBar">
 						<Size x="780" y="20"/>

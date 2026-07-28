@@ -120,14 +120,18 @@ CalendarPlus.Colors.expansions = {
 	Midnight         = { r = 0.30, g = 0.25, b = 0.58 },
 }
 
--- The reference mockup's --bg-app/--panel/--panel-2 custom properties -- a
--- dark blue-gray "modern WoW" scale, replacing the near-black day cells
--- (0.08,0.08,0.09) sitting against Blizzard's brown stone dialog texture,
--- which never actually matched each other.
+-- A warm gold/parchment scale (replacing the earlier cool dark blue-gray
+-- one) so the window's own tint actually agrees with Blizzard's stock
+-- UI-DialogBox-Border edge art (see ApplyDialogBackdrop) -- that border has
+-- always been a warm tan/gold parchment design, which read as mismatched
+-- sitting behind a cool blue-gray backdrop. Values are original, chosen to
+-- evoke the same warm ornate-parchment feel as other polished modern
+-- WoW addon UIs, not sampled or copied from any of them.
 CalendarPlus.Colors.surface = {
-	appBg  = { r = 0.078, g = 0.102, b = 0.137 }, -- #141a23 -- window backdrop
-	panel  = { r = 0.110, g = 0.141, b = 0.192 }, -- #1c2431 -- grid area
-	panel2 = { r = 0.137, g = 0.173, b = 0.231 }, -- #232c3b -- day cells
-	card   = { r = 0.165, g = 0.204, b = 0.275 }, -- #2a3446 -- raised/hover surfaces
-	line   = { r = 0.176, g = 0.204, b = 0.282 }, -- #2d3648 -- --line-soft, cell dividers
+	appBg  = { r = 0.075, g = 0.052, b = 0.036 }, -- window backdrop
+	panel  = { r = 0.130, g = 0.095, b = 0.068 }, -- grid area
+	panel2 = { r = 0.163, g = 0.122, b = 0.088 }, -- day cells
+	card   = { r = 0.203, g = 0.155, b = 0.113 }, -- raised/hover surfaces
+	line   = { r = 0.55,  g = 0.42,  b = 0.24 },  -- cell dividers (gold-brown, was blue-gray)
+	accent = { r = 0.80,  g = 0.64,  b = 0.32 },  -- brighter gold, for section-divider-style accents
 }

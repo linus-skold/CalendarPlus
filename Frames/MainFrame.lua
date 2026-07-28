@@ -315,6 +315,16 @@ function CalendarPlus.MainFrame_OnLoad(frame)
 	local panel = CalendarPlus.Colors.surface.panel
 	gridBg:SetColorTexture(panel.r, panel.g, panel.b, 1)
 
+	-- Thin gold accent line under the header row -- an ornate-parchment-style
+	-- section divider, sitting right above the day-of-week header. Plain
+	-- flat-colored texture (no gradient/image asset needed).
+	local accent = CalendarPlus.Colors.surface.accent
+	local headerDivider = frame:CreateTexture(nil, "ARTWORK")
+	headerDivider:SetHeight(2)
+	headerDivider:SetPoint("TOPLEFT", frame.TopBar, "BOTTOMLEFT", 0, -4)
+	headerDivider:SetPoint("TOPRIGHT", frame.TopBar, "BOTTOMRIGHT", 0, -4)
+	headerDivider:SetColorTexture(accent.r, accent.g, accent.b, 0.6)
+
 	frame.TopBar.PrevMonth:SetScript("OnClick", function()
 		currentOffset = currentOffset - 1
 		CalendarPlus.RepaintMonth()

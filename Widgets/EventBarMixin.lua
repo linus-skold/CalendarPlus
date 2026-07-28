@@ -28,6 +28,22 @@ function EventBarMixin:OnPoolAcquire()
 	self.fill = self.fill or self:CreateTexture(nil, "ARTWORK")
 	self.fill:SetColorTexture(1, 1, 1, 1)
 
+	-- Thin gold top/bottom edge accent (same treatment as FilterChipMixin's
+	-- chips), giving the bar a framed, ornate-parchment feel instead of a
+	-- flat solid-color block. Drawn on a higher ARTWORK sublevel so it sits
+	-- above the fill/caps.
+	self.edgeTop = self.edgeTop or self:CreateTexture(nil, "ARTWORK", nil, 1)
+	self.edgeTop:SetHeight(1)
+	self.edgeTop:SetPoint("TOPLEFT")
+	self.edgeTop:SetPoint("TOPRIGHT")
+	self.edgeBottom = self.edgeBottom or self:CreateTexture(nil, "ARTWORK", nil, 1)
+	self.edgeBottom:SetHeight(1)
+	self.edgeBottom:SetPoint("BOTTOMLEFT")
+	self.edgeBottom:SetPoint("BOTTOMRIGHT")
+	local accent = CalendarPlus.Colors.surface.accent
+	self.edgeTop:SetColorTexture(accent.r, accent.g, accent.b, 1)
+	self.edgeBottom:SetColorTexture(accent.r, accent.g, accent.b, 1)
+
 	self.label = self.label or self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	self.label:SetPoint("LEFT", 4, 0)
 	self.label:SetPoint("RIGHT", -4, 0)
@@ -69,6 +85,8 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.capRight:SetVertexColor(color.r, color.g, color.b, alpha)
 	self.fill:SetVertexColor(color.r, color.g, color.b, alpha)
 	self.label:SetAlpha(alpha)
+	self.edgeTop:SetAlpha(0.35 * alpha)
+	self.edgeBottom:SetAlpha(0.35 * alpha)
 
 	self.capLeft:ClearAllPoints()
 	self.capRight:ClearAllPoints()
