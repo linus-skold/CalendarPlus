@@ -40,22 +40,21 @@ function EventBarMixin:OnPoolAcquire()
 	self.label:SetMaxLines(1)
 end
 
--- segment: { colStart, colEnd, lane, isStart, isEnd, event = CalendarEventInfo,
--- category, displayTitle, colorOverride, isSingleDay, isPadding } --
--- displayTitle overrides event.title when the caller has resolved something
--- more specific to show (e.g. "Timewalking: Wrath" once its expansion label
--- has been fetched). Color priority: an explicit colorOverride (expansion/
--- faction-specific) wins first, then single-day events get a flat coral
--- regardless of category, then the plain category color. isPadding (a faded
--- preview of an adjacent month's events on the grid's leading/trailing
--- padding days) dims whatever color was chosen.
+-- segment: { colStart, colEnd, lane, isStart, isEnd, category, displayTitle,
+-- colorOverride, isSingleDay, isPadding } -- displayTitle is always the
+-- final, already-resolved title (Timewalking/PvP enrichment happens once at
+-- cache-build time, see CalendarProvider). Color priority: an explicit
+-- colorOverride (expansion/faction-specific) wins first, then single-day
+-- events get a flat coral regardless of category, then the plain category
+-- color. isPadding (a faded preview of an adjacent month's events on the
+-- grid's leading/trailing padding days) dims whatever color was chosen.
 function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.categoryKey = segment.category
 	local color = segment.colorOverride
 		or (segment.isSingleDay and CalendarPlus.Colors.singleDay)
 		or CalendarPlus.Colors[segment.category]
 		or CalendarPlus.Colors.default
-	self.label:SetText(segment.displayTitle or segment.event.title or "")
+	self.label:SetText(segment.displayTitle or "")
 
 	local Layout = CalendarPlus.Layout
 	local yOffset = (headerHeight or Layout.DAY_HEADER_HEIGHT) + (segment.lane - 1) * (Layout.LANE_HEIGHT + Layout.LANE_GAP)

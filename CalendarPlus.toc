@@ -13,6 +13,7 @@ Core\Options.lua
 Core\Colors.lua
 Core\ObjectPools.lua
 
+Data\DateMath.lua
 Data\CalendarProvider.lua
 
 Widgets\Layout.lua

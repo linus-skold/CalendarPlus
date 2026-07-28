@@ -10,14 +10,29 @@ provider.MONTH_NAMES_ABBR = {
 	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 }
 
--- key: "year-month" -> { info = MonthInfo, days = { [monthDay] = { CalendarEventInfo... } } }
-local monthCache = {}
+-- How far back/forward (in months from today) to precompute and cache in one
+-- pass, and how many days old that cache can get before it's rebuilt from
+-- scratch. Navigating further out than this window than falls back to
+-- nothing rather than a live fetch -- a deliberate tradeoff for dropping all
+-- the per-repaint C_Calendar juggling below.
+local BUILD_MONTHS_BACK = 2
+local BUILD_MONTHS_FORWARD = 6
+local CACHE_MAX_AGE_DAYS = 7
+
 local anchored = false
 
+-- SetAbsMonth (called once per month during a cache build) fires
+-- CALENDAR_UPDATE_EVENT_LIST synchronously, not just after a server
+-- round-trip -- our own watcher reacts to that by rebuilding, which would
+-- call SetAbsMonth again, recursing forever (a real C-stack overflow this
+-- addon hit earlier). Held true for the ENTIRE build, not just bracketing
+-- each individual SetAbsMonth call, since there's no guarantee the event
+-- doesn't fire on some deferred tick between them.
+local resolvingSelection = false
+
 -- Only ever requests fresh server data once per session -- guarded so it
--- doesn't refire on every repaint. (Anchoring the selected month itself is
--- handled entirely by GetMonth below.)
-local function EnsureAnchored()
+-- doesn't refire on every rebuild.
+local function EnsureOpened()
 	if anchored then return end
 	anchored = true
 	C_Calendar.OpenCalendar()
@@ -33,92 +48,12 @@ end
 -- the player's timezone differs from the server's (i.e. almost always),
 -- which is exactly the kind of bug that silently breaks this only right
 -- around the reset day itself. Returned in the same 1=Sunday..7=Saturday
--- convention as CalendarTime.weekday / CalendarMonthInfo.firstWeekday.
+-- convention as CalendarTime.weekday / DateMath.WeekdayOfSerial.
 function provider:GetResetWeekday()
 	local today = C_DateAndTime.GetCurrentCalendarTime()
 	local secondsSinceMidnight = today.hour * 3600 + today.minute * 60
 	local daysForward = math.floor((secondsSinceMidnight + C_DateAndTime.GetSecondsUntilWeeklyReset()) / 86400)
 	return ((today.weekday - 1 + daysForward) % 7) + 1
-end
-
--- Tracks whichever offsetMonths GetMonth last actually resolved via
--- SetAbsMonth/SetMonth, purely as a fast-path skip for repeat calls with the
--- SAME target (e.g. re-showing the frame without navigating). This alone is
--- NOT enough to prevent recursion once a single repaint needs multiple
--- different months (current + adjacent-month padding preview): each one
--- resolves to a different offset, so this check never blocks any of them,
--- and each SetAbsMonth/SetMonth still fires CALENDAR_UPDATE_EVENT_LIST
--- synchronously -- see resolvingSelection below for what actually stops the
--- resulting cascade.
-local lastResolvedOffset = nil
-
--- SetAbsMonth/SetMonth fire CALENDAR_UPDATE_EVENT_LIST synchronously (not
--- just after a server round-trip like OpenCalendar's own doc implies), and
--- the watcher below reacts to that by invalidating the cache + repainting,
--- which calls GetMonth again, which would call SetAbsMonth/SetMonth again...
--- This flag brackets every such call so the watcher can simply ignore any
--- event fired as a side effect of our OWN navigation, regardless of how many
--- different offsets get resolved within one repaint (that's what actually
--- broke here: three GetMonth calls per repaint -- current/prev/next month --
--- meant the offset-based guard above never matched twice in a row, so it
--- never stopped the cascade; this does, unconditionally).
-local resolvingSelection = false
-
-function provider:GetMonth(offsetMonths)
-	EnsureAnchored()
-
-	-- GetMonthInfo/GetNumDayEvents/GetDayEvent all read from the "currently
-	-- selected" month, which only actually moves via SetAbsMonth/SetMonth --
-	-- passing offsetMonths straight through without ever calling SetMonth
-	-- left the event *data* stuck on whatever month was anchored at load
-	-- time, even though the month *metadata* computed fine on its own.
-	-- Resetting to today and stepping by the exact offset in one move (each
-	-- time the target actually changes, not accumulating relative steps)
-	-- means every resolution lands on the correct target regardless of
-	-- navigation history, since SetMonth's own offset is relative to
-	-- whatever is CURRENTLY selected, not always today.
-	if lastResolvedOffset ~= offsetMonths then
-		lastResolvedOffset = offsetMonths
-		resolvingSelection = true
-		local today = C_DateAndTime.GetCurrentCalendarTime()
-		C_Calendar.SetAbsMonth(today.month, today.year)
-		if offsetMonths ~= 0 then
-			C_Calendar.SetMonth(offsetMonths)
-		end
-		resolvingSelection = false
-	end
-
-	local info = C_Calendar.GetMonthInfo(0)
-	local key = info.year .. "-" .. info.month
-
-	local cached = monthCache[key]
-	if cached then
-		return cached
-	end
-
-	local days = {}
-	for day = 1, info.numDays do
-		local n = C_Calendar.GetNumDayEvents(0, day)
-		if n > 0 then
-			local list = {}
-			for i = 1, n do
-				list[i] = C_Calendar.GetDayEvent(0, day, i)
-			end
-			days[day] = list
-		end
-	end
-
-	cached = { info = info, days = days }
-	monthCache[key] = cached
-	return cached
-end
-
-function provider:Invalidate(year, month)
-	if year and month then
-		monthCache[year .. "-" .. month] = nil
-	else
-		wipe(monthCache)
-	end
 end
 
 -- Expansion-name enrichment for events like "Timewalking Dungeon Event" whose
@@ -127,10 +62,9 @@ end
 -- these (it's meant for player-created events); the richer text ("...revisit
 -- past dungeons from the Shadowlands expansion") comes from the dedicated
 -- holiday API instead, which is synchronous -- no OpenEvent/async wait
--- needed. Callers always pass offset 0 here since GetMonth has already moved
--- the "currently selected" month to the target before this ever runs.
-local expansionLabelCache = {} -- eventID -> label string, or false = no match found
-
+-- needed, but it does need the month currently being scanned to actually be
+-- C_Calendar's "currently selected" one, which only holds true while
+-- BuildEvents is actively iterating that specific month below.
 local EXPANSION_PATTERNS = {
 	{ pattern = "Burning Crusade", label = "TBC" },
 	{ pattern = "Wrath of the Lich King", label = "Wrath" },
@@ -156,24 +90,160 @@ local function ExtractExpansionLabel(description)
 	return nil
 end
 
-function provider:GetExpansionLabel(day, index, eventID)
-	if eventID then
-		local cached = expansionLabelCache[eventID]
-		if cached ~= nil then
-			return cached ~= false and cached or nil
+-- PvP Brawls/Battlegrounds/Arena Skirmishes are cleaner colored by the
+-- player's own faction than by a generic category color.
+local PVP_TITLE_PATTERNS = { "PvP Brawl", "Battleground", "Arena Skirmish" }
+
+-- Returns (displayTitle, colorOverride). expansionCache is scoped to a
+-- single BuildEvents call (eventID -> label or false), so a multi-day
+-- Timewalking event only pays for GetHolidayInfo once instead of once per
+-- day of its run.
+local function ComputeDisplay(ev, day, index, expansionCache)
+	local title = ev.title
+	if not title then return nil, nil end
+
+	if title:find("Timewalking", 1, true) then
+		local label
+		if ev.eventID and expansionCache[ev.eventID] ~= nil then
+			label = expansionCache[ev.eventID] or nil
+		else
+			local ok, holidayInfo = pcall(C_Calendar.GetHolidayInfo, 0, day, index)
+			if ok and holidayInfo then
+				label = ExtractExpansionLabel(holidayInfo.description)
+			end
+			if ev.eventID then
+				expansionCache[ev.eventID] = label or false
+			end
+		end
+		if label then
+			return "Timewalking: " .. label, CalendarPlus.Colors.expansions[label]
+		end
+		return title, nil
+	end
+
+	for _, pattern in ipairs(PVP_TITLE_PATTERNS) do
+		if title:find(pattern, 1, true) then
+			return title, CalendarPlus.Colors.faction
 		end
 	end
 
-	local label
-	local ok, holidayInfo = pcall(C_Calendar.GetHolidayInfo, 0, day, index)
-	if ok and holidayInfo then
-		label = ExtractExpansionLabel(holidayInfo.description)
+	return title, nil
+end
+
+-- Walks BUILD_MONTHS_BACK..BUILD_MONTHS_FORWARD around today in one
+-- continuous pass, merging each multi-day event's per-day entries
+-- (CalendarEventInfo.sequenceType: START/ONGOING/END, keyed by eventID) into
+-- a single { startSerial, endSerial, isStart, isEnd, title, category,
+-- colorOverride, numSequenceDays } span, in DateMath serial-day terms. Since
+-- it's one continuous scan across the whole window instead of separate
+-- per-month fetches, an event spanning a month boundary just naturally
+-- keeps extending the same entry -- no leading/trailing-padding split-and-
+-- link machinery needed at render time anymore.
+local function BuildEvents()
+	local events = {}
+	local openByEventID = {}
+	local expansionCache = {}
+
+	local today = C_DateAndTime.GetCurrentCalendarTime()
+	local baseIndex = today.year * 12 + (today.month - 1)
+
+	for offset = -BUILD_MONTHS_BACK, BUILD_MONTHS_FORWARD do
+		local totalIndex = baseIndex + offset
+		local year = math.floor(totalIndex / 12)
+		local month = (totalIndex % 12) + 1
+
+		C_Calendar.SetAbsMonth(month, year)
+
+		local numDays = CalendarPlus.DateMath.DaysInMonth(year, month)
+		local monthFirstSerial = CalendarPlus.DateMath.ToSerial(year, month, 1)
+
+		for day = 1, numDays do
+			local n = C_Calendar.GetNumDayEvents(0, day)
+			for i = 1, n do
+				local ev = C_Calendar.GetDayEvent(0, day, i)
+				local _, category = CalendarPlus.Colors:GetForEvent(ev)
+				local serial = monthFirstSerial + day - 1
+				local seq = ev.sequenceType
+				local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
+				local open = ev.eventID and openByEventID[ev.eventID]
+
+				if seq == "START" then
+					local entry = {
+						startSerial = serial, endSerial = serial,
+						isStart = true, isEnd = false,
+						title = displayTitle, category = category, colorOverride = colorOverride,
+						numSequenceDays = ev.numSequenceDays,
+					}
+					events[#events + 1] = entry
+					if ev.eventID then openByEventID[ev.eventID] = entry end
+				elseif (seq == "ONGOING" or seq == "END") and open then
+					open.endSerial = serial
+					open.title = displayTitle
+					open.colorOverride = colorOverride
+					if seq == "END" then
+						open.isEnd = true
+						openByEventID[ev.eventID] = nil
+					end
+				else
+					-- No open sequence to continue (either a plain
+					-- single-day event, or the START happened before our
+					-- build window).
+					local entry = {
+						startSerial = serial, endSerial = serial,
+						isStart = seq ~= "ONGOING" and seq ~= "END",
+						isEnd = seq ~= "START" and seq ~= "ONGOING",
+						title = displayTitle, category = category, colorOverride = colorOverride,
+						numSequenceDays = ev.numSequenceDays,
+					}
+					events[#events + 1] = entry
+					if ev.eventID and seq == "ONGOING" then
+						openByEventID[ev.eventID] = entry
+					end
+				end
+			end
+		end
 	end
 
-	if eventID then
-		expansionLabelCache[eventID] = label or false
+	for _, entry in ipairs(events) do
+		entry.isSingleDay = entry.startSerial == entry.endSerial and entry.isStart and entry.isEnd
 	end
-	return label
+
+	return events
+end
+
+function provider:RebuildEventCache()
+	EnsureOpened()
+
+	resolvingSelection = true
+	local ok, events = pcall(BuildEvents)
+	resolvingSelection = false
+
+	if not ok then
+		return
+	end
+
+	CalendarPlus.db.eventCache = {
+		builtAtSerial = CalendarPlus.DateMath.TodaySerial(),
+		events = events,
+	}
+
+	CalendarPlus.EventBus:Fire("CALENDAR_DATA_INVALIDATED")
+end
+
+-- Builds (or rebuilds, if missing/stale) on demand. The build itself is
+-- synchronous and cheap (a few hundred local C_Calendar calls, no network
+-- wait), so callers can just use the return value immediately.
+function provider:GetEventCache()
+	if not CalendarPlus.db then return {} end
+
+	local cache = CalendarPlus.db.eventCache
+	local todaySerial = CalendarPlus.DateMath.TodaySerial()
+	if not cache or not cache.builtAtSerial or (todaySerial - cache.builtAtSerial) > CACHE_MAX_AGE_DAYS then
+		self:RebuildEventCache()
+		cache = CalendarPlus.db.eventCache
+	end
+
+	return cache and cache.events or {}
 end
 
 local watcher = CreateFrame("Frame")
@@ -181,6 +251,12 @@ watcher:RegisterEvent("CALENDAR_UPDATE_EVENT_LIST")
 watcher:RegisterEvent("CALENDAR_UPDATE_EVENT")
 watcher:SetScript("OnEvent", function()
 	if resolvingSelection then return end
-	provider:Invalidate()
-	CalendarPlus.EventBus:Fire("CALENDAR_DATA_INVALIDATED")
+	provider:RebuildEventCache()
+end)
+
+-- Pre-warm the cache at login (in the background of DB_READY, not the first
+-- time the user opens the calendar) so opening it doesn't have to wait on a
+-- build.
+CalendarPlus.EventBus:On("DB_READY", function()
+	provider:GetEventCache()
 end)
