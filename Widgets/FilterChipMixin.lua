@@ -5,35 +5,44 @@ CalendarPlus = CalendarPlus or {}
 FilterChipMixin = {}
 
 -- Same fixed-cap-plus-stretchable-fill technique as EventBarMixin's rounded
--- bars: a small rounded region at each end (native size, no stretching) and
--- a plain rectangle filling the rest, so it looks properly rounded at any
--- chip width instead of one 32px mask stretched across the whole button.
+-- bars: a small end region at each side (native size, no stretching) and a
+-- plain rectangle filling the rest, so it looks right at any chip width
+-- instead of one mask stretched across the whole button. Now uses the same
+-- CleanFullBar* art as the event bars (chevron caps + grain-textured fill)
+-- instead of the old plain rounded-pill mask, so chips and bars read as the
+-- same material.
 local CAP_WIDTH = 12
+
+-- Matches EventBarMixin's own FILL_TILE_WIDTH -- CleanFullBarFill.tga's
+-- native width in pixels, needed to convert an on-screen fill width into how
+-- many texture repeats to tile.
+local FILL_TILE_WIDTH = 245
 
 function FilterChipMixin:OnPoolAcquire()
 	self.capLeft = self.capLeft or self:CreateTexture(nil, "BACKGROUND")
-	self.capLeft:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\RoundMaskLeft")
-	-- Only the left half of the source image is actually the curve (the
-	-- right half is flat padding, meant for the old whole-bar stretch) --
-	-- cropping to just that half means the whole CAP_WIDTH is spent on the
-	-- curve instead of half being wasted on more flatness right next to the
-	-- fill rectangle.
-	self.capLeft:SetTexCoord(0, 0.5, 0, 1)
+	self.capLeft:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarCapLeft")
 	self.capLeft:SetPoint("TOPLEFT")
 	self.capLeft:SetPoint("BOTTOMLEFT")
 	self.capLeft:SetWidth(CAP_WIDTH)
 
 	self.capRight = self.capRight or self:CreateTexture(nil, "BACKGROUND")
-	self.capRight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\RoundMaskRight")
-	self.capRight:SetTexCoord(0.5, 1, 0, 1)
+	self.capRight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarCapRight")
 	self.capRight:SetPoint("TOPRIGHT")
 	self.capRight:SetPoint("BOTTOMRIGHT")
 	self.capRight:SetWidth(CAP_WIDTH)
 
 	self.fill = self.fill or self:CreateTexture(nil, "BACKGROUND")
-	self.fill:SetColorTexture(1, 1, 1, 1)
+	self.fill:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarFill", "REPEAT", "CLAMP")
 	self.fill:SetPoint("TOPLEFT", self.capLeft, "TOPRIGHT")
 	self.fill:SetPoint("BOTTOMRIGHT", self.capRight, "BOTTOMLEFT")
+
+	-- BarTextureFill.tga grain accent layered over the fill, same as
+	-- EventBarMixin's bars -- sized/tiled to the fill's own bounds in
+	-- SetData/Refresh below (see width plumbing there).
+	self.grain = self.grain or self:CreateTexture(nil, "ARTWORK")
+	self.grain:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\BarTextureFill", "REPEAT", "CLAMP")
+	self.grain:SetPoint("TOPLEFT", self.capLeft, "TOPRIGHT")
+	self.grain:SetPoint("BOTTOMRIGHT", self.capRight, "BOTTOMLEFT")
 
 	-- A circular alpha sprite (same one used for the "today" badge) tinted
 	-- per-category, instead of a plain colored square.
@@ -49,25 +58,13 @@ function FilterChipMixin:OnPoolAcquire()
 
 	-- Any texture on the Button's HIGHLIGHT layer is shown/hidden
 	-- automatically on mouseover -- no OnEnter/OnLeave scripting needed.
+	-- Same StatusBarHighlight.tga + ADD blend as EventBarMixin's bars, for a
+	-- consistent hover glow instead of a flat white overlay.
 	self.highlight = self.highlight or self:CreateTexture(nil, "HIGHLIGHT")
 	self.highlight:SetAllPoints()
-	self.highlight:SetColorTexture(1, 1, 1, 0.15)
+	self.highlight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\StatusBarHighlight")
 	self.highlight:SetBlendMode("ADD")
-
-	-- Thin gold top/bottom edge accent, matching EventBarMixin's bars --
-	-- ties the chips into the same warm-parchment framing instead of
-	-- looking like a plain flat pill.
-	self.edgeTop = self.edgeTop or self:CreateTexture(nil, "ARTWORK", nil, 1)
-	self.edgeTop:SetHeight(1)
-	self.edgeTop:SetPoint("TOPLEFT", CAP_WIDTH * 0.4, 0)
-	self.edgeTop:SetPoint("TOPRIGHT", -CAP_WIDTH * 0.4, 0)
-	self.edgeBottom = self.edgeBottom or self:CreateTexture(nil, "ARTWORK", nil, 1)
-	self.edgeBottom:SetHeight(1)
-	self.edgeBottom:SetPoint("BOTTOMLEFT", CAP_WIDTH * 0.4, 0)
-	self.edgeBottom:SetPoint("BOTTOMRIGHT", -CAP_WIDTH * 0.4, 0)
-	local accent = CalendarPlus.Colors.surface.accent
-	self.edgeTop:SetColorTexture(accent.r, accent.g, accent.b, 0.5)
-	self.edgeBottom:SetColorTexture(accent.r, accent.g, accent.b, 0.5)
+	self.highlight:SetAlpha(0.35)
 
 	self:SetScript("OnClick", function(owner)
 		owner.active = not owner.active
@@ -85,6 +82,13 @@ function FilterChipMixin:SetData(categoryKey, label, onToggle)
 	self.label:SetText(label)
 	local color = CalendarPlus.Colors[categoryKey] or CalendarPlus.Colors.default
 	self.dot:SetVertexColor(color.r, color.g, color.b, 1)
+
+	-- Chip width is already set (see BuildFilterChips: SetSize then SetData)
+	-- by the time this runs, so the grain can be tiled to the fill's actual
+	-- on-screen width right away rather than needing a separate layout pass.
+	local fillWidth = self:GetWidth() - CAP_WIDTH * 2
+	self.grain:SetTexCoord(0, fillWidth / FILL_TILE_WIDTH, 0, 1)
+
 	self:Refresh()
 	self:Show()
 end
@@ -101,8 +105,7 @@ function FilterChipMixin:Refresh()
 	self.capLeft:SetVertexColor(r, g, b, a)
 	self.capRight:SetVertexColor(r, g, b, a)
 	self.fill:SetVertexColor(r, g, b, a)
-	self.edgeTop:SetShown(self.active)
-	self.edgeBottom:SetShown(self.active)
+	self.grain:SetAlpha(a)
 end
 
 function FilterChipMixin:Reset()

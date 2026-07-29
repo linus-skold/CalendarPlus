@@ -88,27 +88,18 @@ function EventBarMixin:OnPoolAcquire()
 	self:SetScript("OnEnter", function(owner) owner.hoverHighlight:Show() end)
 	self:SetScript("OnLeave", function(owner) owner.hoverHighlight:Hide() end)
 
-	-- Thin gold top/bottom edge accent (same treatment as FilterChipMixin's
-	-- chips), giving the bar a framed, ornate-parchment feel instead of a
-	-- flat solid-color block. Drawn on a higher ARTWORK sublevel so it sits
-	-- above the fill/caps/grain.
-	self.edgeTop = self.edgeTop or self:CreateTexture(nil, "ARTWORK", nil, 2)
-	self.edgeTop:SetHeight(1)
-	self.edgeTop:SetPoint("TOPLEFT")
-	self.edgeTop:SetPoint("TOPRIGHT")
-	self.edgeBottom = self.edgeBottom or self:CreateTexture(nil, "ARTWORK", nil, 2)
-	self.edgeBottom:SetHeight(1)
-	self.edgeBottom:SetPoint("BOTTOMLEFT")
-	self.edgeBottom:SetPoint("BOTTOMRIGHT")
-	local accent = CalendarPlus.Colors.surface.accent
-	self.edgeTop:SetColorTexture(accent.r, accent.g, accent.b, 1)
-	self.edgeBottom:SetColorTexture(accent.r, accent.g, accent.b, 1)
-
 	-- Both anchors are set per-segment in SetData instead of fixed here (see
 	-- leftInset there) -- the sharper diamond point (unlike the old rounded
 	-- cap) reads as visually "pointing into" text that starts too close to
 	-- it, so the label needs to clear the whole cap width plus a small gap
 	-- on sides that actually show one, not just a flat 4px.
+	-- TextDropShadow.tga -- created (and thus drawn) before the label below,
+	-- so within the shared OVERLAY layer/sublevel it renders first and sits
+	-- behind the label text, giving titles a bit of contrast against
+	-- busy/light fill colors.
+	self.labelShadow = self.labelShadow or self:CreateTexture(nil, "OVERLAY")
+	self.labelShadow:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\TextDropShadow")
+
 	self.label = self.label or self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	self.label:SetJustifyH("LEFT")
 	-- Default WordWrap left the label free to grow past the bar's fixed
@@ -156,8 +147,6 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.capRight:SetVertexColor(color.r, color.g, color.b, alpha)
 	self.fill:SetVertexColor(color.r, color.g, color.b, alpha)
 	self.label:SetAlpha(alpha)
-	self.edgeTop:SetAlpha(0.35 * alpha)
-	self.edgeBottom:SetAlpha(0.35 * alpha)
 	self.grain:SetAlpha(alpha)
 
 	self.capLeft:ClearAllPoints()
@@ -191,6 +180,19 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.label:ClearAllPoints()
 	self.label:SetPoint("LEFT", leftInset + 4, 0)
 	self.label:SetPoint("RIGHT", -4, 0)
+
+	-- Tracks the label's own rect (not the bar's) so it stays correctly
+	-- sized/positioned as the label's LEFT/RIGHT anchors move with
+	-- leftInset. TextDropShadow.tga is a soft, low-alpha blur (max ~36%
+	-- alpha in the source file) rather than a hard silhouette, so matching
+	-- it exactly to the label's tight bounds crops off the falloff that
+	-- makes it read as a shadow at all -- padding it out a few px on every
+	-- side and offsetting further (2px, was 1) gives that falloff room to
+	-- actually show past the letters.
+	self.labelShadow:ClearAllPoints()
+	self.labelShadow:SetPoint("TOPLEFT", self.label, "TOPLEFT", -2, 2)
+	self.labelShadow:SetPoint("BOTTOMRIGHT", self.label, "BOTTOMRIGHT", 4, -3)
+	self.labelShadow:SetAlpha(alpha)
 
 	self.fill:SetPoint("TOPLEFT", leftInset, 0)
 	self.fill:SetPoint("BOTTOMRIGHT", -rightInset, 0)

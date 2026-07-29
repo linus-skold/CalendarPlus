@@ -310,6 +310,21 @@ function CalendarPlus.MainFrame_OnLoad(frame)
 	CalendarPlus:ApplyDialogBackdrop(frame)
 	tinsert(UISpecialFrames, frame:GetName())
 
+	-- BackgroundTest.tga -- sits directly on the frame itself, covering the
+	-- whole window behind everything else (TopBar/Grid panels still draw
+	-- their own opaque backgrounds over it within their own bounds). The
+	-- source art is 512x256 padded into a 512x512 canvas (Blizzard wants a
+	-- power-of-two square), living in the top half -- TexCoord clips to just
+	-- that top 512x256 region instead of sampling the blank padding below it.
+	-- Converted from the original BackgroundTest.png -- loose-file SetTexture
+	-- paths don't actually load PNG in this client (it fails silently,
+	-- leaving the backdrop's near-black tint showing through), unlike every
+	-- other asset in Media/ which is TGA.
+	local bgTest = frame:CreateTexture(nil, "BACKGROUND")
+	bgTest:SetAllPoints()
+	bgTest:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\BackgroundTest")
+	bgTest:SetTexCoord(0, 1, 0, 0.5)
+
 	-- Panel behind the whole grid (matching the mockup's .grid-card), so the
 	-- gaps between week rows read as an intentional layered surface instead
 	-- of empty space showing the window backdrop through.
