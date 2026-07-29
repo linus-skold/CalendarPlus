@@ -38,6 +38,18 @@ eventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
 		addon.charDB = CalendarPlusCharDB
 
 		addon.EventBus:Fire("DB_READY")
+
+		-- GameTimeFrame is the minimap's clock/calendar button -- part of
+		-- the base UI, not the lazy-loaded Blizzard_Calendar addon, so it
+		-- already exists by now. Replacing its OnClick (rather than
+		-- hooksecurefunc'ing ToggleCalendar, which can't be prevented from
+		-- also running afterward) means clicking it opens only our own
+		-- window, not Blizzard's native calendar too.
+		if GameTimeFrame then
+			GameTimeFrame:SetScript("OnClick", function()
+				addon.ToggleMainFrame()
+			end)
+		end
 	end
 end)
 
