@@ -20,9 +20,9 @@ function EventBarMixin:OnPoolAcquire()
 	self:SetFrameLevel(self:GetParent():GetFrameLevel() + 2)
 	self:SetScript("OnMouseUp", function(owner, button)
 		if button == "LeftButton" then
-			CalendarPlus.ShowEventInfo(owner.startSerial, owner.eventIndex)
+			CalendarPlus.ShowEventInfo(owner.startSerial, owner.eventID)
 		elseif button == "RightButton" then
-			CalendarPlus.ShowEventContextMenu(owner, owner.startSerial, owner.eventIndex)
+			CalendarPlus.ShowEventContextMenu(owner, owner.startSerial, owner.eventID)
 		end
 	end)
 
@@ -71,10 +71,8 @@ end
 -- isPadding dims whatever color was chosen (adjacent-month preview days).
 function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.categoryKey = segment.category
-	-- Used by the click handler in CalendarPlus.ShowEventInfo to identify
-	-- which C_Calendar day+index this bar represents.
 	self.startSerial = segment.startSerial
-	self.eventIndex = segment.eventIndex
+	self.eventID = segment.eventID
 	local color = segment.colorOverride
 		or (segment.isSingleDay and segment.category ~= "custom" and CalendarPlus.Colors.singleDay)
 		or CalendarPlus.Colors[segment.category]

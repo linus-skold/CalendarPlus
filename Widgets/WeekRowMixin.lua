@@ -43,7 +43,7 @@ local function RenderSegmentPiece(self, segment, colStart, colEnd, isStart, isEn
 		lane = segment.lane, category = segment.category,
 		displayTitle = segment.title, colorOverride = segment.colorOverride,
 		isSingleDay = segment.isSingleDay, isPadding = isPadding,
-		startSerial = segment.startSerial, eventIndex = segment.eventIndex,
+		startSerial = segment.startSerial, eventID = segment.eventID,
 	}, self.colWidth, CalendarPlus.Layout.DAY_HEADER_HEIGHT)
 end
 

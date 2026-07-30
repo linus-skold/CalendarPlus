@@ -66,13 +66,12 @@ local function UpdateDowHeader()
 	end
 end
 
--- Filters+trims CalendarProvider's cached event list down to whatever
--- overlaps [gridFirstSerial, gridLastSerial] (the whole visible grid,
--- including padding days), applying the weekly-reset trim and active
--- category filters. The trim stays a render-time step so toggling
--- trimWeeklyEventsAtReset takes effect immediately without a cache rebuild.
+-- Filters+trims CalendarProvider's event data down to whatever overlaps
+-- [gridFirstSerial, gridLastSerial], applying the weekly-reset trim and
+-- active category filters. currentOffset -/+ 1 covers the grid since padding
+-- rows only spill into the immediate neighbor month.
 local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
-	local events = CalendarPlus.CalendarProvider:GetEventCache()
+	local events = CalendarPlus.CalendarProvider:GetEventsForRange(currentOffset - 1, currentOffset + 1)
 	local trimEnabled = not CalendarPlus.db or CalendarPlus.db.trimWeeklyEventsAtReset ~= false
 	local resetWeekday = trimEnabled and CalendarPlus.CalendarProvider:GetResetWeekday() or nil
 	local unlisted = CalendarPlus.db and CalendarPlus.db.unlistedEvents or {}
@@ -99,7 +98,7 @@ local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 					isStart = entry.isStart, isEnd = entry.isEnd,
 					title = entry.title, category = entry.category, colorOverride = entry.colorOverride,
 					isSingleDay = entry.startSerial == endSerial and entry.isStart and entry.isEnd,
-					eventIndex = entry.eventIndex,
+					eventID = entry.eventID,
 				}
 			end
 		end
@@ -132,7 +131,7 @@ local function ClipEventsToWeek(events, weekFirstSerial, weekLastSerial, monthFi
 				title = ev.title, category = ev.category, colorOverride = ev.colorOverride,
 				isSingleDay = ev.isSingleDay,
 				realColStart = realColStart, realColEnd = realColEnd,
-				startSerial = ev.startSerial, eventIndex = ev.eventIndex,
+				startSerial = ev.startSerial, eventID = ev.eventID,
 			}
 		end
 	end

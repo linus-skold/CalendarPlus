@@ -48,7 +48,7 @@ local hookedShowEventFrame = false
 local hookedCalendarMutations = false
 
 -- Tracks the event-info frame most recently shown via CalendarFrame_ShowEventFrame,
--- and which event (startSerial:eventIndex) ShowEventInfo last opened -- lets a
+-- and which event (startSerial:eventID) ShowEventInfo last opened -- lets a
 -- second click on the same event's bar toggle it closed instead of reopening it.
 local lastShownFrame
 local lastOpenedEventKey
@@ -80,10 +80,10 @@ local function EnsureCalendarFrameParked()
 	if not hookedCalendarMutations then
 		hookedCalendarMutations = true
 		hooksecurefunc(C_Calendar, "ContextMenuEventRemove", function()
-			CalendarPlus.CalendarProvider:RebuildEventCache()
+			CalendarPlus.CalendarProvider:InvalidateAll()
 		end)
 		hooksecurefunc(C_Calendar, "ContextMenuEventPaste", function()
-			CalendarPlus.CalendarProvider:RebuildEventCache()
+			CalendarPlus.CalendarProvider:InvalidateAll()
 		end)
 	end
 end
@@ -163,8 +163,16 @@ end
 -- barFrame: the clicked EventBarMixin bar, used as the menu's screen anchor.
 -- eventButton is only ever read as plain data (.eventIndex) by Blizzard's
 -- code, no widget methods, so a bare table is enough here (unlike dayButton).
-function CalendarPlus.ShowEventContextMenu(barFrame, startSerial, eventIndex)
-	if not startSerial or not eventIndex then return end
+function CalendarPlus.ShowEventContextMenu(barFrame, startSerial, eventID)
+	if not startSerial or not eventID then return end
+
+	local year, month, day = CalendarPlus.DateMath.FromSerial(startSerial)
+	CalendarPlus.CalendarProvider:AnchorToMonth(year, month)
+	local eventIndex = CalendarPlus.CalendarProvider:ResolveEventIndex(0, day, eventID)
+	if not eventIndex then
+		print("|cff33ff99CalendarPlus|r: this event no longer exists.")
+		return
+	end
 
 	local realDayButton = PrepareDayButton(startSerial)
 	if not realDayButton then return end
@@ -185,18 +193,15 @@ end
 -- C_Calendar.OpenEvent kicks off an async fetch; CalendarFrame reacts once it
 -- completes, picking which view frame to show (or CalendarCreateEventFrame in
 -- edit mode). Nothing further to do here beyond making sure it renders.
-function CalendarPlus.ShowEventInfo(startSerial, eventIndex)
-	if not startSerial or not eventIndex then return end
+function CalendarPlus.ShowEventInfo(startSerial, eventID)
+	if not startSerial or not eventID then return end
 
-	local eventKey = startSerial .. ":" .. eventIndex
+	local eventKey = startSerial .. ":" .. eventID
 	if eventKey == lastOpenedEventKey and lastShownFrame and lastShownFrame:IsShown() then
 		lastShownFrame:Hide()
 		lastOpenedEventKey = nil
 		return
 	end
-
-	local _, _, day = CalendarPlus.DateMath.FromSerial(startSerial)
-	local monthOffset = ResolveMonthOffset(startSerial)
 
 	if not EnsureBlizzardCalendarLoaded() then
 		print("|cff33ff99CalendarPlus|r: couldn't open this event's info (Blizzard's own Calendar UI wasn't available).")
@@ -208,9 +213,16 @@ function CalendarPlus.ShowEventInfo(startSerial, eventIndex)
 		return
 	end
 
-	CalendarPlus.CalendarProvider:AnchorToCurrentMonth()
+	local year, month, day = CalendarPlus.DateMath.FromSerial(startSerial)
+	CalendarPlus.CalendarProvider:AnchorToMonth(year, month)
 	EnsureCalendarFrameParked()
 
+	local eventIndex = CalendarPlus.CalendarProvider:ResolveEventIndex(0, day, eventID)
+	if not eventIndex then
+		print("|cff33ff99CalendarPlus|r: this event no longer exists.")
+		return
+	end
+
 	lastOpenedEventKey = eventKey
-	C_Calendar.OpenEvent(monthOffset, day, eventIndex)
+	C_Calendar.OpenEvent(0, day, eventIndex)
 end

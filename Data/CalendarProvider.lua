@@ -10,13 +10,8 @@ provider.MONTH_NAMES_ABBR = {
 	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 }
 
--- How far back/forward (in months from today) to precompute and cache in one
--- pass, and how many days old the cache can get before it's rebuilt.
--- Navigating further out than this window falls back to nothing rather than
--- a live fetch.
-local BUILD_MONTHS_BACK = 2
-local BUILD_MONTHS_FORWARD = 6
-local CACHE_MAX_AGE_DAYS = 7
+-- Cached per month, built lazily on first access. No fixed range.
+local MONTH_CACHE_MAX_AGE_DAYS = 1
 
 local anchored = false
 
@@ -49,13 +44,22 @@ end
 -- Forces C_Calendar's shared "currently selected month" to today. Blizzard's
 -- day-context-menu code resolves a dayButton's monthOffset relative to that
 -- same shared selection, so it must be anchored right before invoking it.
--- Guarded with the same flag RebuildEventCache uses to avoid a redundant
+-- Guarded with the same flag RebuildMonthCache uses to avoid a redundant
 -- rebuild via the watcher.
 function provider:AnchorToCurrentMonth()
 	EnsureOpened()
 	local today = C_DateAndTime.GetCurrentCalendarTime()
 	resolvingSelection = true
 	C_Calendar.SetAbsMonth(today.month, today.year)
+	resolvingSelection = false
+end
+
+-- GetNumDayEvents/GetDayEvent only return data for the currently selected
+-- month, so it must be selected before querying an arbitrary month's events.
+function provider:AnchorToMonth(year, month)
+	EnsureOpened()
+	resolvingSelection = true
+	C_Calendar.SetAbsMonth(month, year)
 	resolvingSelection = false
 end
 
@@ -129,90 +133,76 @@ local function ComputeDisplay(ev, day, index, expansionCache)
 	return title, nil
 end
 
--- Walks BUILD_MONTHS_BACK..BUILD_MONTHS_FORWARD around today in one
--- continuous pass, merging each multi-day event's per-day entries
--- (CalendarEventInfo.sequenceType: START/ONGOING/END, keyed by eventID) into
--- a single { startSerial, endSerial, isStart, isEnd, title, category,
--- colorOverride, numSequenceDays } span, in DateMath serial-day terms.
-local function BuildEvents()
+-- Merges one month's per-day event entries (CalendarEventInfo.sequenceType:
+-- START/ONGOING/END, keyed by eventID) into { startSerial, endSerial,
+-- isStart, isEnd, title, category, colorOverride, numSequenceDays } spans.
+local function BuildMonthEvents(year, month)
 	local events = {}
 	local openByEventID = {}
 	local expansionCache = {}
 
-	local today = C_DateAndTime.GetCurrentCalendarTime()
-	local baseIndex = today.year * 12 + (today.month - 1)
+	C_Calendar.SetAbsMonth(month, year)
 
-	for offset = -BUILD_MONTHS_BACK, BUILD_MONTHS_FORWARD do
-		local totalIndex = baseIndex + offset
-		local year = math.floor(totalIndex / 12)
-		local month = (totalIndex % 12) + 1
+	local numDays = CalendarPlus.DateMath.DaysInMonth(year, month)
+	local monthFirstSerial = CalendarPlus.DateMath.ToSerial(year, month, 1)
 
-		C_Calendar.SetAbsMonth(month, year)
+	for day = 1, numDays do
+		local n = C_Calendar.GetNumDayEvents(0, day)
+		for i = 1, n do
+			local ev = C_Calendar.GetDayEvent(0, day, i)
+			local _, category = CalendarPlus.Colors:GetForEvent(ev)
+			local serial = monthFirstSerial + day - 1
+			local seq = ev.sequenceType
+			local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
+			local open = ev.eventID and openByEventID[ev.eventID]
 
-		local numDays = CalendarPlus.DateMath.DaysInMonth(year, month)
-		local monthFirstSerial = CalendarPlus.DateMath.ToSerial(year, month, 1)
+			-- Listed/Unlisted keys off the fully-resolved display title,
+			-- so every distinct event gets its own row. Two exceptions
+			-- grouped under a shared key: the yearly Anniversary
+			-- celebration's title changes every year, and player-made
+			-- events have arbitrary unique titles -- both collapse into
+			-- one shared bucket instead of one row each.
+			local eventKey
+			if ev.calendarType ~= "HOLIDAY" then
+				eventKey = "Player Events"
+			elseif displayTitle and displayTitle:find("Anniversary", 1, true) then
+				eventKey = "Anniversary"
+			else
+				eventKey = displayTitle
+			end
 
-		for day = 1, numDays do
-			local n = C_Calendar.GetNumDayEvents(0, day)
-			for i = 1, n do
-				local ev = C_Calendar.GetDayEvent(0, day, i)
-				local _, category = CalendarPlus.Colors:GetForEvent(ev)
-				local serial = monthFirstSerial + day - 1
-				local seq = ev.sequenceType
-				local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
-				local open = ev.eventID and openByEventID[ev.eventID]
-
-				-- Listed/Unlisted keys off the fully-resolved display title,
-				-- so every distinct event gets its own row. Two exceptions
-				-- grouped under a shared key: the yearly Anniversary
-				-- celebration's title changes every year, and player-made
-				-- events have arbitrary unique titles -- both collapse into
-				-- one shared bucket instead of one row each.
-				local eventKey
-				if ev.calendarType ~= "HOLIDAY" then
-					eventKey = "Player Events"
-				elseif displayTitle and displayTitle:find("Anniversary", 1, true) then
-					eventKey = "Anniversary"
-				else
-					eventKey = displayTitle
+			if seq == "START" then
+				local entry = {
+					startSerial = serial, endSerial = serial,
+					isStart = true, isEnd = false,
+					title = displayTitle, category = category, colorOverride = colorOverride,
+					numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
+					eventID = ev.eventID,
+				}
+				events[#events + 1] = entry
+				if ev.eventID then openByEventID[ev.eventID] = entry end
+			elseif (seq == "ONGOING" or seq == "END") and open then
+				open.endSerial = serial
+				open.title = displayTitle
+				open.colorOverride = colorOverride
+				if seq == "END" then
+					open.isEnd = true
+					openByEventID[ev.eventID] = nil
 				end
-
-				if seq == "START" then
-					local entry = {
-						startSerial = serial, endSerial = serial,
-						isStart = true, isEnd = false,
-						title = displayTitle, category = category, colorOverride = colorOverride,
-						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
-						-- C_Calendar's per-day event index, kept so clicking the
-						-- rendered bar can call C_Calendar.OpenEvent to show
-						-- Blizzard's info panel for this event.
-						eventIndex = i,
-					}
-					events[#events + 1] = entry
-					if ev.eventID then openByEventID[ev.eventID] = entry end
-				elseif (seq == "ONGOING" or seq == "END") and open then
-					open.endSerial = serial
-					open.title = displayTitle
-					open.colorOverride = colorOverride
-					if seq == "END" then
-						open.isEnd = true
-						openByEventID[ev.eventID] = nil
-					end
-				else
-					-- No open sequence to continue: a plain single-day event,
-					-- or the START happened before our build window.
-					local entry = {
-						startSerial = serial, endSerial = serial,
-						isStart = seq ~= "ONGOING" and seq ~= "END",
-						isEnd = seq ~= "START" and seq ~= "ONGOING",
-						title = displayTitle, category = category, colorOverride = colorOverride,
-						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
-						eventIndex = i,
-					}
-					events[#events + 1] = entry
-					if ev.eventID and seq == "ONGOING" then
-						openByEventID[ev.eventID] = entry
-					end
+			else
+				-- No open sequence: single-day event, or START was in a
+				-- different month's build.
+				local entry = {
+					startSerial = serial, endSerial = serial,
+					isStart = seq ~= "ONGOING" and seq ~= "END",
+					isEnd = seq ~= "START" and seq ~= "ONGOING",
+					title = displayTitle, category = category, colorOverride = colorOverride,
+					numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
+					eventID = ev.eventID,
+				}
+				events[#events + 1] = entry
+				if ev.eventID and seq == "ONGOING" then
+					openByEventID[ev.eventID] = entry
 				end
 			end
 		end
@@ -233,18 +223,31 @@ local function BuildEvents()
 	return events
 end
 
-function provider:RebuildEventCache()
+local function MonthKey(year, month)
+	return year * 12 + (month - 1)
+end
+
+local function OffsetToYearMonth(offset)
+	local today = C_DateAndTime.GetCurrentCalendarTime()
+	local totalIndex = today.year * 12 + (today.month - 1) + offset
+	local year = math.floor(totalIndex / 12)
+	local month = (totalIndex % 12) + 1
+	return year, month
+end
+
+function provider:RebuildMonthCache(year, month)
 	EnsureOpened()
 
 	resolvingSelection = true
-	local ok, events = pcall(BuildEvents)
+	local ok, events = pcall(BuildMonthEvents, year, month)
 	resolvingSelection = false
 
 	if not ok then
 		return
 	end
 
-	CalendarPlus.db.eventCache = {
+	CalendarPlus.db.eventCache = CalendarPlus.db.eventCache or {}
+	CalendarPlus.db.eventCache[MonthKey(year, month)] = {
 		builtAtSerial = CalendarPlus.DateMath.TodaySerial(),
 		events = events,
 	}
@@ -252,37 +255,66 @@ function provider:RebuildEventCache()
 	CalendarPlus.EventBus:Fire("CALENDAR_DATA_INVALIDATED")
 end
 
--- Builds (or rebuilds, if missing/stale) on demand. The build is synchronous
--- and cheap, so callers can use the return value immediately.
-function provider:GetEventCache()
+-- offset is relative to today (0 = current month, -1 = last month, etc).
+function provider:GetMonthEvents(offset)
 	if not CalendarPlus.db then return {} end
 
-	local cache = CalendarPlus.db.eventCache
+	local year, month = OffsetToYearMonth(offset)
+	local key = MonthKey(year, month)
+	local cache = CalendarPlus.db.eventCache and CalendarPlus.db.eventCache[key]
 	local todaySerial = CalendarPlus.DateMath.TodaySerial()
-	if not cache or not cache.builtAtSerial or (todaySerial - cache.builtAtSerial) > CACHE_MAX_AGE_DAYS then
-		self:RebuildEventCache()
-		cache = CalendarPlus.db.eventCache
+	if not cache or not cache.builtAtSerial or (todaySerial - cache.builtAtSerial) > MONTH_CACHE_MAX_AGE_DAYS then
+		self:RebuildMonthCache(year, month)
+		cache = CalendarPlus.db.eventCache[key]
 	end
 
 	return cache and cache.events or {}
 end
 
--- Every distinct named event currently in the cache, alphabetically, tagged
--- with its true classification category (namedCategory, never overwritten by
--- the singleDay override -- see BuildEvents). Backs the Settings panel's
--- Listed/Unlisted picker and MainFrame's category-chip visibility check.
+function provider:GetEventsForRange(minOffset, maxOffset)
+	local merged = {}
+	for offset = minOffset, maxOffset do
+		for _, entry in ipairs(self:GetMonthEvents(offset)) do
+			merged[#merged + 1] = entry
+		end
+	end
+	return merged
+end
+
+-- Live per-day index lookup -- Blizzard's ordering can shift, so this must
+-- be called right before use, never cached.
+function provider:ResolveEventIndex(monthOffset, day, eventID)
+	local n = C_Calendar.GetNumDayEvents(monthOffset, day)
+	for i = 1, n do
+		local ev = C_Calendar.GetDayEvent(monthOffset, day, i)
+		if ev and ev.eventID == eventID then
+			return i
+		end
+	end
+	return nil
+end
+
+-- Every distinct named event across currently-cached months. Backs the
+-- Settings panel's Listed/Unlisted picker and MainFrame's category chips.
 function provider:GetKnownEventKeys()
-	local events = self:GetEventCache()
 	local seen = {}
 	local list = {}
-	for _, entry in ipairs(events) do
-		if entry.eventKey and not seen[entry.eventKey] then
-			seen[entry.eventKey] = true
-			list[#list + 1] = { key = entry.eventKey, category = entry.namedCategory }
+	local cache = CalendarPlus.db and CalendarPlus.db.eventCache or {}
+	for _, monthCache in pairs(cache) do
+		for _, entry in ipairs(monthCache.events) do
+			if entry.eventKey and not seen[entry.eventKey] then
+				seen[entry.eventKey] = true
+				list[#list + 1] = { key = entry.eventKey, category = entry.namedCategory }
+			end
 		end
 	end
 	table.sort(list, function(a, b) return a.key < b.key end)
 	return list
+end
+
+function provider:InvalidateAll()
+	CalendarPlus.db.eventCache = {}
+	CalendarPlus.EventBus:Fire("CALENDAR_DATA_INVALIDATED")
 end
 
 local watcher = CreateFrame("Frame")
@@ -290,10 +322,15 @@ watcher:RegisterEvent("CALENDAR_UPDATE_EVENT_LIST")
 watcher:RegisterEvent("CALENDAR_UPDATE_EVENT")
 watcher:SetScript("OnEvent", function()
 	if resolvingSelection then return end
-	provider:RebuildEventCache()
+	provider:InvalidateAll()
 end)
 
--- Pre-warm the cache at login so opening the calendar doesn't wait on a build.
+-- Discards the old single-table eventCache shape from prior versions, then
+-- pre-warms today's month (+/- 1).
 CalendarPlus.EventBus:On("DB_READY", function()
-	provider:GetEventCache()
+	local cache = CalendarPlus.db.eventCache
+	if cache and (cache.builtAtSerial or cache.events) then
+		CalendarPlus.db.eventCache = {}
+	end
+	provider:GetEventsForRange(-1, 1)
 end)
