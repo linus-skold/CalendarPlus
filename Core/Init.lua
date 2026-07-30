@@ -49,13 +49,6 @@ eventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
 	end
 end)
 
--- This client's XML schema no longer parses a <Backdrop> node, so both
--- top-level windows apply their backdrop here in Lua instead. Requires the
--- frame to have inherits="BackdropTemplate" in its XML.
---
--- bgFile is a plain white texture, tinted via SetBackdropColor to the
--- reference mockup's --bg-app color, instead of Blizzard's stock stone
--- dialog background.
 function addon:ApplyDialogBackdrop(frame)
 	frame:SetBackdrop({
 		bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -68,7 +61,6 @@ function addon:ApplyDialogBackdrop(frame)
 	frame:SetBackdropColor(appBg.r, appBg.g, appBg.b, 0.97)
 end
 
--- Full names + common abbreviations, all lowercase.
 local WEEKDAY_NAME_TO_NUM = {
 	sunday = 1, sun = 1,
 	monday = 2, mon = 2,
