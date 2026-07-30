@@ -150,7 +150,7 @@ local function BuildMonthEvents(year, month)
 		local n = C_Calendar.GetNumDayEvents(0, day)
 		for i = 1, n do
 			local ev = C_Calendar.GetDayEvent(0, day, i)
-			local _, category = CalendarPlus.Colors:GetForEvent(ev)
+			local _, category, sortRank = CalendarPlus.Colors:GetForEvent(ev)
 			local serial = monthFirstSerial + day - 1
 			local seq = ev.sequenceType
 			local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
@@ -177,7 +177,7 @@ local function BuildMonthEvents(year, month)
 					isStart = true, isEnd = false,
 					title = displayTitle, category = category, colorOverride = colorOverride,
 					numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
-					eventID = ev.eventID,
+					eventID = ev.eventID, sortRank = sortRank,
 				}
 				events[#events + 1] = entry
 				if ev.eventID then openByEventID[ev.eventID] = entry end
@@ -198,7 +198,7 @@ local function BuildMonthEvents(year, month)
 					isEnd = seq ~= "START" and seq ~= "ONGOING",
 					title = displayTitle, category = category, colorOverride = colorOverride,
 					numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
-					eventID = ev.eventID,
+					eventID = ev.eventID, sortRank = sortRank,
 				}
 				events[#events + 1] = entry
 				if ev.eventID and seq == "ONGOING" then
@@ -271,14 +271,60 @@ function provider:GetMonthEvents(offset)
 	return cache and cache.events or {}
 end
 
-function provider:GetEventsForRange(minOffset, maxOffset)
+-- A span crossing a month boundary is built as two separate entries (each
+-- month is scanned independently, so neither build sees the other side of
+-- the boundary to merge into). Re-stitches same-eventID entries whose gap is
+-- zero or negative (adjacent/overlapping) back into one, so lane packing and
+-- rendering see it as the single continuous event it actually is.
+local function ShallowCopy(t)
+	local copy = {}
+	for k, v in pairs(t) do
+		copy[k] = v
+	end
+	return copy
+end
+
+local function MergeAdjacentSpans(events)
+	local byEventID = {}
 	local merged = {}
-	for offset = minOffset, maxOffset do
-		for _, entry in ipairs(self:GetMonthEvents(offset)) do
+	for _, entry in ipairs(events) do
+		if not entry.eventID then
 			merged[#merged + 1] = entry
+		else
+			byEventID[entry.eventID] = byEventID[entry.eventID] or {}
+			table.insert(byEventID[entry.eventID], entry)
 		end
 	end
+
+	-- Copied before mutating so this never corrupts the cached month entries
+	-- it reads from (those tables are shared with CalendarPlus.db.eventCache).
+	for _, group in pairs(byEventID) do
+		table.sort(group, function(a, b) return a.startSerial < b.startSerial end)
+		local current = ShallowCopy(group[1])
+		for i = 2, #group do
+			local nextEntry = group[i]
+			if nextEntry.startSerial <= current.endSerial + 1 then
+				current.endSerial = math.max(current.endSerial, nextEntry.endSerial)
+				current.isEnd = current.isEnd or nextEntry.isEnd
+			else
+				merged[#merged + 1] = current
+				current = ShallowCopy(nextEntry)
+			end
+		end
+		merged[#merged + 1] = current
+	end
+
 	return merged
+end
+
+function provider:GetEventsForRange(minOffset, maxOffset)
+	local events = {}
+	for offset = minOffset, maxOffset do
+		for _, entry in ipairs(self:GetMonthEvents(offset)) do
+			events[#events + 1] = entry
+		end
+	end
+	return MergeAdjacentSpans(events)
 end
 
 -- Live per-day index lookup -- Blizzard's ordering can shift, so this must

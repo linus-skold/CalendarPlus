@@ -63,11 +63,18 @@ local function RenderSegment(self, segment)
 	end
 end
 
+-- Lanes are already assigned grid-wide (see MainFrame's AssignGridLanes), so
+-- this only measures the row's own height from whichever lanes it uses.
 function WeekRowMixin:SetWeek(dayCells, segments)
 	self.dayCellPool:ReleaseAll()
 	self.eventBarPool:ReleaseAll()
 
-	local packed, laneCount = CalendarPlus.Layout.PackLanes(segments)
+	local laneCount = 0
+	for _, segment in ipairs(segments) do
+		if segment.lane and segment.lane > laneCount then
+			laneCount = segment.lane
+		end
+	end
 	local height = CalendarPlus.Layout.RowHeightForLanes(laneCount)
 	self:SetHeight(height)
 
@@ -80,7 +87,7 @@ function WeekRowMixin:SetWeek(dayCells, segments)
 		cell:SetData(day.monthDay, day.isToday, day.isOtherMonth, day.serial)
 	end
 
-	for _, segment in ipairs(packed) do
+	for _, segment in ipairs(segments) do
 		RenderSegment(self, segment)
 	end
 

@@ -38,48 +38,62 @@ end
 -- Only used for the 5-bucket color classification -- the Listed/Unlisted
 -- picker keys off each event's actual title instead, so every distinct event
 -- still gets its own row.
+-- Lane priority for overlapping bars: Specials, Holiday/Seasonal, Monthly,
+-- then Weekly by subtype. Lower sorts first (see Layout.PackLanes), keeping
+-- a given category in the same lane across adjacent weeks instead of it
+-- flipping depending on which event happened to start first that week.
+local RANK_SPECIAL = 10
+local RANK_SEASONAL = 20
+local RANK_MONTHLY = 30
+local RANK_WEEKLY_DUNGEON = 40
+local RANK_WEEKLY_TIMEWALKING = 50
+local RANK_WEEKLY_PVP = 60
+local RANK_WEEKLY_DELVE = 70
+local RANK_WEEKLY_PETBATTLE = 80
+local RANK_CUSTOM = 90
+
 local SYSTEM_FEED_PATTERNS = {
-	{ pattern = "Timewalking", category = "weekly" },
-	{ pattern = "PvP Brawl", category = "weekly" },
+	{ pattern = "Timewalking", category = "weekly", sortRank = RANK_WEEKLY_TIMEWALKING },
+	{ pattern = "PvP Brawl", category = "weekly", sortRank = RANK_WEEKLY_PVP },
 	-- These four run on a weekly cadence, unlike other "...Bonus Event"
 	-- titles, which fall through to the "special" catch-all instead.
-	{ pattern = "Pet Battle Bonus Event", category = "weekly" },
-	{ pattern = "Delves Bonus Event", category = "weekly" },
-	{ pattern = "Arena Skirmish Bonus Event", category = "weekly" },
-	{ pattern = "Midnight Dungeon Event", category = "weekly" },
-	{ pattern = "Darkmoon Faire", category = "monthly" },
-	{ pattern = "Trial of Style", category = "monthly" },
-	{ pattern = "Fire Festival", category = "seasonal" },
-	{ pattern = "Fireworks Spectacular", category = "seasonal" },
-	{ pattern = "Love is in the Air", category = "seasonal" },
-	{ pattern = "Lunar Festival", category = "seasonal" },
-	{ pattern = "Brewfest", category = "seasonal" },
-	{ pattern = "Hallow's End", category = "seasonal" },
-	{ pattern = "Winter Veil", category = "seasonal" },
-	{ pattern = "Children's Week", category = "seasonal" },
-	{ pattern = "Pilgrim's Bounty", category = "seasonal" },
-	{ pattern = "Noblegarden", category = "seasonal" },
-	{ pattern = "Anniversary", category = "seasonal" },
+	{ pattern = "Pet Battle Bonus Event", category = "weekly", sortRank = RANK_WEEKLY_PETBATTLE },
+	{ pattern = "Delves Bonus Event", category = "weekly", sortRank = RANK_WEEKLY_DELVE },
+	{ pattern = "Arena Skirmish Bonus Event", category = "weekly", sortRank = RANK_WEEKLY_PVP },
+	{ pattern = "Midnight Dungeon Event", category = "weekly", sortRank = RANK_WEEKLY_DUNGEON },
+	{ pattern = "Darkmoon Faire", category = "monthly", sortRank = RANK_MONTHLY },
+	{ pattern = "Trial of Style", category = "monthly", sortRank = RANK_MONTHLY },
+	{ pattern = "Fire Festival", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Fireworks Spectacular", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Love is in the Air", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Lunar Festival", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Brewfest", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Hallow's End", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Winter Veil", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Children's Week", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Pilgrim's Bounty", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Noblegarden", category = "seasonal", sortRank = RANK_SEASONAL },
+	{ pattern = "Anniversary", category = "seasonal", sortRank = RANK_SEASONAL },
 }
 
 function CalendarPlus.Colors:GetForEvent(eventInfo)
 	-- Player-made events (calendarType PLAYER/GUILD/ARENA) are one flat
 	-- "custom" bucket regardless of eventType.
 	if eventInfo.calendarType ~= "HOLIDAY" then
-		return self.custom, "custom"
+		return self.custom, "custom", RANK_CUSTOM
 	end
 
 	local title = eventInfo.title or ""
 	for _, entry in ipairs(SYSTEM_FEED_PATTERNS) do
 		if title:find(entry.pattern, 1, true) then
-			return self[entry.category], entry.category
+			return self[entry.category], entry.category, entry.sortRank
 		end
 	end
 
 	-- Unrecognized systemwide feed entries (one-off/limited-time promos) fall
 	-- back to this color; the Listed/Unlisted picker still lists each one
 	-- individually by its own title.
-	return self.special, "special"
+	return self.special, "special", RANK_SPECIAL
 end
 
 -- Approximate expansion brand colors, keyed by CalendarProvider's

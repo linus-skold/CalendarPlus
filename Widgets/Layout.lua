@@ -20,15 +20,19 @@ end
 -- mockup's JS. `segments` is a list of { colStart, colEnd, ... }; returns the
 -- same list with a `.lane` field added, plus the total lane count used.
 -- Pure function, no frame dependency -- keeps it unit testable outside a UI.
---
--- Packing runs on the whole, unsplit per-week event list (one entry per
--- event, even if it crosses the real/padding month boundary within that
--- week) -- the caller splits an already-packed segment into two same-lane
--- render pieces afterward (see WeekRowMixin:RenderSegment) rather than lanes
--- ever needing to be linked back together.
+-- Called once per grid (see MainFrame's AssignGridLanes), not per week row,
+-- so a multi-day event keeps one lane across every row it spans.
+-- sortRank ties break by startSerial for determinism.
 function Layout.PackLanes(segments)
 	table.sort(segments, function(a, b)
-		return a.colStart < b.colStart
+		if a.colStart ~= b.colStart then
+			return a.colStart < b.colStart
+		end
+		local rankA, rankB = a.sortRank or math.huge, b.sortRank or math.huge
+		if rankA ~= rankB then
+			return rankA < rankB
+		end
+		return (a.startSerial or 0) < (b.startSerial or 0)
 	end)
 
 	local laneEnds = {} -- laneEnds[lane] = last occupied column in that lane

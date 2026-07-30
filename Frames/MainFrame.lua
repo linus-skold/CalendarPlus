@@ -98,7 +98,7 @@ local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 					isStart = entry.isStart, isEnd = entry.isEnd,
 					title = entry.title, category = entry.category, colorOverride = entry.colorOverride,
 					isSingleDay = entry.startSerial == endSerial and entry.isStart and entry.isEnd,
-					eventID = entry.eventID,
+					eventID = entry.eventID, sortRank = entry.sortRank,
 				}
 			end
 		end
@@ -131,11 +131,34 @@ local function ClipEventsToWeek(events, weekFirstSerial, weekLastSerial, monthFi
 				title = ev.title, category = ev.category, colorOverride = ev.colorOverride,
 				isSingleDay = ev.isSingleDay,
 				realColStart = realColStart, realColEnd = realColEnd,
-				startSerial = ev.startSerial, eventID = ev.eventID,
+				startSerial = ev.startSerial, eventID = ev.eventID, sortRank = ev.sortRank,
+				lane = ev.lane,
 			}
 		end
 	end
 	return weekSegments
+end
+
+-- Packs lanes once across the whole visible grid rather than per week row,
+-- so a multi-day event keeps the same lane in every row it spans. Packing
+-- each row independently let a continuing event land in a different lane
+-- than its own continuation below it, since row-local tie-breaks (e.g. a
+-- new event starting exactly at a row's left edge) have no notion of what
+-- lane that event already occupied in the row above.
+local function AssignGridLanes(events, gridFirstSerial, gridLastSerial)
+	local gridSegments = {}
+	for i, ev in ipairs(events) do
+		gridSegments[i] = {
+			colStart = math.max(ev.startSerial, gridFirstSerial) - gridFirstSerial,
+			colEnd = math.min(ev.endSerial, gridLastSerial) - gridFirstSerial,
+			sortRank = ev.sortRank, startSerial = ev.startSerial,
+			source = ev,
+		}
+	end
+	CalendarPlus.Layout.PackLanes(gridSegments)
+	for _, seg in ipairs(gridSegments) do
+		seg.source.lane = seg.lane
+	end
 end
 
 local FILTER_CHIP_DEFS = {
@@ -241,6 +264,7 @@ function CalendarPlus.RepaintMonth()
 	local gridLastSerial = gridFirstSerial + neededRows * COLUMNS - 1
 
 	local visibleEvents = GetVisibleEvents(gridFirstSerial, gridLastSerial)
+	AssignGridLanes(visibleEvents, gridFirstSerial, gridLastSerial)
 
 	local cumulativeY = 0
 	for r = 1, ROWS do
