@@ -341,6 +341,12 @@ function CalendarPlus.MainFrame_OnLoad(frame)
 		CalendarPlus.RepaintMonth()
 	end)
 
+	frame:EnableMouseWheel(true)
+	frame:SetScript("OnMouseWheel", function(_, delta)
+		currentOffset = currentOffset - delta
+		CalendarPlus.RepaintMonth()
+	end)
+
 	CreateDowHeader(frame.DowHeader)
 	BuildFilterChips(frame.TopBar.FilterBar)
 
