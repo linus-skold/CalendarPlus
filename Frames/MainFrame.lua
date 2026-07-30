@@ -182,6 +182,14 @@ local function BuildFilterChips(filterBar)
 			activeCategoryFilters[catKey] = active
 			CalendarPlus.RepaintMonth()
 		end)
+		chip.onIsolate = function(catKey)
+			for _, other in ipairs(filterChips) do
+				other.active = other.categoryKey == catKey
+				other:Refresh()
+				activeCategoryFilters[other.categoryKey] = other.active
+			end
+			CalendarPlus.RepaintMonth()
+		end
 		activeCategoryFilters[entry.key] = true
 		chip.def = entry
 		filterChips[#filterChips + 1] = chip
@@ -338,6 +346,15 @@ function CalendarPlus.MainFrame_OnLoad(frame)
 	end)
 	frame.TopBar.NextMonth:SetScript("OnClick", function()
 		currentOffset = currentOffset + 1
+		CalendarPlus.RepaintMonth()
+	end)
+
+	frame.ResetFilters:SetScript("OnClick", function()
+		for _, chip in ipairs(filterChips) do
+			chip.active = true
+			chip:Refresh()
+			activeCategoryFilters[chip.categoryKey] = true
+		end
 		CalendarPlus.RepaintMonth()
 	end)
 

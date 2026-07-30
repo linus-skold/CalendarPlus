@@ -52,6 +52,10 @@ function FilterChipMixin:OnPoolAcquire()
 	self.highlight:SetAlpha(0.35)
 
 	self:SetScript("OnClick", function(owner)
+		if IsControlKeyDown() and owner.onIsolate then
+			owner.onIsolate(owner.categoryKey)
+			return
+		end
 		owner.active = not owner.active
 		owner:Refresh()
 		if owner.onToggle then
@@ -65,8 +69,7 @@ function FilterChipMixin:SetData(categoryKey, label, onToggle)
 	self.active = true
 	self.onToggle = onToggle
 	self.label:SetText(label)
-	local color = CalendarPlus.Colors[categoryKey] or CalendarPlus.Colors.default
-	self.dot:SetVertexColor(color.r, color.g, color.b, 1)
+	self.dotColor = CalendarPlus.Colors[categoryKey] or CalendarPlus.Colors.default
 
 	-- Chip width is already set (BuildFilterChips: SetSize then SetData), so
 	-- the grain can be tiled to the fill's actual width right away.
@@ -82,9 +85,13 @@ function FilterChipMixin:Refresh()
 	if self.active then
 		local card = CalendarPlus.Colors.surface.card
 		r, g, b, a = card.r, card.g, card.b, 1
+		self.dot:SetVertexColor(self.dotColor.r, self.dotColor.g, self.dotColor.b, 1)
+		self.label:SetTextColor(1, 1, 1, 1)
 	else
 		local panel2 = CalendarPlus.Colors.surface.panel2
 		r, g, b, a = panel2.r, panel2.g, panel2.b, 0.5
+		self.dot:SetVertexColor(self.dotColor.r, self.dotColor.g, self.dotColor.b, 0.35)
+		self.label:SetTextColor(0.5, 0.5, 0.5, 1)
 	end
 	self.capLeft:SetVertexColor(r, g, b, a)
 	self.capRight:SetVertexColor(r, g, b, a)

@@ -24,6 +24,17 @@
 					</OnClick>
 				</Scripts>
 			</Button>
+			<Button name="$parentResetFilters" parentKey="ResetFilters" inherits="UIPanelButtonTemplate">
+				<Size x="52" y="22"/>
+				<Anchors>
+					<Anchor point="RIGHT" relativeKey="$parent.SettingsButton" relativePoint="LEFT" x="-8"/>
+				</Anchors>
+				<Scripts>
+					<OnLoad>
+						self:SetText("Reset")
+					</OnLoad>
+				</Scripts>
+			</Button>
 			<Frame name="$parentTopBar" parentKey="TopBar">
 				<Size x="0" y="36"/>
 				<Anchors>
