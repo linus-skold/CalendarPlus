@@ -4,18 +4,11 @@ CalendarPlus = CalendarPlus or {}
 
 FilterChipMixin = {}
 
--- Same fixed-cap-plus-stretchable-fill technique as EventBarMixin's rounded
--- bars: a small end region at each side (native size, no stretching) and a
--- plain rectangle filling the rest, so it looks right at any chip width
--- instead of one mask stretched across the whole button. Now uses the same
--- CleanFullBar* art as the event bars (chevron caps + grain-textured fill)
--- instead of the old plain rounded-pill mask, so chips and bars read as the
--- same material.
+-- Same fixed-cap-plus-stretchable-fill technique as EventBarMixin: fixed end
+-- caps plus a rectangle filling the rest, so it looks right at any chip width.
 local CAP_WIDTH = 12
 
--- Matches EventBarMixin's own FILL_TILE_WIDTH -- CleanFullBarFill.tga's
--- native width in pixels, needed to convert an on-screen fill width into how
--- many texture repeats to tile.
+-- Matches EventBarMixin's FILL_TILE_WIDTH (CleanFullBarFill.tga's native width).
 local FILL_TILE_WIDTH = 245
 
 function FilterChipMixin:OnPoolAcquire()
@@ -36,30 +29,22 @@ function FilterChipMixin:OnPoolAcquire()
 	self.fill:SetPoint("TOPLEFT", self.capLeft, "TOPRIGHT")
 	self.fill:SetPoint("BOTTOMRIGHT", self.capRight, "BOTTOMLEFT")
 
-	-- BarTextureFill.tga grain accent layered over the fill, same as
-	-- EventBarMixin's bars -- sized/tiled to the fill's own bounds in
-	-- SetData/Refresh below (see width plumbing there).
+	-- Grain accent layered over the fill, sized/tiled to the fill's bounds in SetData.
 	self.grain = self.grain or self:CreateTexture(nil, "ARTWORK")
 	self.grain:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\BarTextureFill", "REPEAT", "CLAMP")
 	self.grain:SetPoint("TOPLEFT", self.capLeft, "TOPRIGHT")
 	self.grain:SetPoint("BOTTOMRIGHT", self.capRight, "BOTTOMLEFT")
 
-	-- A circular alpha sprite (same one used for the "today" badge) tinted
-	-- per-category, instead of a plain colored square.
 	self.dot = self.dot or self:CreateTexture(nil, "ARTWORK")
 	self.dot:SetSize(8, 8)
 	self.dot:SetPoint("LEFT", CAP_WIDTH, 0)
 	self.dot:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
 
-	-- No truncation here -- the chip is sized (see BuildFilterChips) to fit
-	-- the full label text, so this only needs a LEFT anchor.
+	-- Chip is sized (see BuildFilterChips) to fit the full label, so no truncation needed.
 	self.label = self.label or self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	self.label:SetPoint("LEFT", self.dot, "RIGHT", 4, 0)
 
-	-- Any texture on the Button's HIGHLIGHT layer is shown/hidden
-	-- automatically on mouseover -- no OnEnter/OnLeave scripting needed.
-	-- Same StatusBarHighlight.tga + ADD blend as EventBarMixin's bars, for a
-	-- consistent hover glow instead of a flat white overlay.
+	-- Button HIGHLIGHT-layer textures show/hide automatically on mouseover.
 	self.highlight = self.highlight or self:CreateTexture(nil, "HIGHLIGHT")
 	self.highlight:SetAllPoints()
 	self.highlight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\StatusBarHighlight")
@@ -83,9 +68,8 @@ function FilterChipMixin:SetData(categoryKey, label, onToggle)
 	local color = CalendarPlus.Colors[categoryKey] or CalendarPlus.Colors.default
 	self.dot:SetVertexColor(color.r, color.g, color.b, 1)
 
-	-- Chip width is already set (see BuildFilterChips: SetSize then SetData)
-	-- by the time this runs, so the grain can be tiled to the fill's actual
-	-- on-screen width right away rather than needing a separate layout pass.
+	-- Chip width is already set (BuildFilterChips: SetSize then SetData), so
+	-- the grain can be tiled to the fill's actual width right away.
 	local fillWidth = self:GetWidth() - CAP_WIDTH * 2
 	self.grain:SetTexCoord(0, fillWidth / FILL_TILE_WIDTH, 0, 1)
 

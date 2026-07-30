@@ -4,30 +4,19 @@ CalendarPlus = CalendarPlus or {}
 
 EventBarMixin = {}
 
--- Fixed on-screen width for the diamond/chevron end caps, regardless of the
--- bar's total width -- same fixed-cap-plus-stretchable-fill technique used
--- throughout this addon, so a pointed end stays a crisp point no matter how
--- wide the bar gets, instead of distorting when stretched. 12 matches the
--- source art's own proportions (an 8px-wide taper against its 12px-tall
--- source cap) scaled up to this bar's LANE_HEIGHT.
+-- Fixed width for the diamond/chevron end caps so a pointed end stays crisp
+-- regardless of the bar's total width, instead of distorting when stretched.
 local CAP_WIDTH = 12
 
--- CleanFullBarFill.tga/BarTextureFill.tga's own native width in pixels --
--- needed to convert an on-screen fill width into how many texture repeats
--- to tile. Settled on after browsing every file in Media/ live via a
--- (since-removed) Settings dropdown that let each be compared in place.
+-- CleanFullBarFill.tga/BarTextureFill.tga's native width in pixels, needed to
+-- convert an on-screen fill width into a texture repeat count.
 local FILL_TILE_WIDTH = 245
 
 function EventBarMixin:OnPoolAcquire()
 	self:SetHeight(CalendarPlus.Layout.LANE_HEIGHT)
 	self:EnableMouse(true)
-	-- Day cells and event bars are sibling frames under the same week row,
-	-- and a day cell's own height spans the whole row (not just its header),
-	-- so it fully overlaps every bar drawn beneath it. Both default to the
-	-- same frame level as plain same-parent siblings, which left mouse
-	-- hit-testing to an unspecified tie-break that was landing on the day
-	-- cell -- explicitly raising bars above their row guarantees they win
-	-- clicks in their own area regardless of creation order.
+	-- Day cells span the whole row and overlap bars drawn beneath them, so bars
+	-- must be raised above the row's frame level to win mouse hit-testing.
 	self:SetFrameLevel(self:GetParent():GetFrameLevel() + 2)
 	self:SetScript("OnMouseUp", function(owner, button)
 		if button == "LeftButton" then
@@ -37,48 +26,22 @@ function EventBarMixin:OnPoolAcquire()
 		end
 	end)
 
-	-- CleanFullBarCapLeft/Right.tga -- cropped from the user-supplied
-	-- CleanFullBar.tga (a plain, textureless chevron-pointed bar shape with
-	-- a subtle bevel; see Media/crop_cleanbar.py) -- white-with-alpha
-	-- sprites, so they can be tinted and shown directly like any other
-	-- texture, no masking needed. Unlike the earlier StatusBarCapLeft/Right,
-	-- these carry no baked-in grain themselves -- that's layered separately
-	-- via self.grain below, from a texture file meant specifically to sit
-	-- on top of a clean bar rather than being part of it.
 	self.capLeft = self.capLeft or self:CreateTexture(nil, "ARTWORK")
 	self.capLeft:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarCapLeft")
 
 	self.capRight = self.capRight or self:CreateTexture(nil, "ARTWORK")
 	self.capRight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarCapRight")
 
-	-- CleanFullBarFill.tga -- used as the fill's own base texture (tinted
-	-- per-category via vertex color same as a flat color would be) instead
-	-- of a plain flat rectangle, so the fill itself already carries some
-	-- texture before the BarTextureFill.tga grain (below) layers on top of it.
 	self.fill = self.fill or self:CreateTexture(nil, "ARTWORK")
 	self.fill:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\CleanFullBarFill", "REPEAT", "CLAMP")
 
-	-- BarTextureFill.tga (cropped from the user-supplied BarTexture.tga, see
-	-- Media/crop_cleanbar.py) layered over the flat fill as a grain accent,
-	-- rather than being the bar's own shape -- scoped to exactly the fill
-	-- rectangle's own bounds (set alongside it in SetData) so it never
-	-- overhangs past the pointed caps on either end. Plain alpha blend (the
-	-- default) is correct here -- unlike the earlier StatusBarFill.tga
-	-- (which was light/near-white and needed MOD/multiply blend instead),
-	-- this one is black with sparse, low alpha, so normal blending just
-	-- darkens the cracks/speckle it actually covers and leaves the rest of
-	-- the fill untouched.
+	-- Grain layered over the flat fill, scoped to the fill rectangle's bounds
+	-- (set in SetData) so it never overhangs past the pointed caps.
 	self.grain = self.grain or self:CreateTexture(nil, "ARTWORK", nil, 1)
 	self.grain:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\BarTextureFill", "REPEAT", "CLAMP")
 
-	-- Plain Frames (unlike FilterChipMixin's Buttons) don't get the
-	-- automatic "HIGHLIGHT layer shows on hover" behavior, so this needs
-	-- explicit OnEnter/OnLeave scripts instead -- same technique as
-	-- DayCellMixin's own hover highlight. Sits above the fill/caps/edge
-	-- accent but below the label so the title stays readable while hovering.
-	-- StatusBarHighlight.tga is a solid warm-gold bar; ADD blend gives a
-	-- glow effect (brightens without darkening/tinting) instead of a flat
-	-- overlay tint.
+	-- Plain Frames don't get automatic HIGHLIGHT-layer hover behavior, so this
+	-- needs explicit OnEnter/OnLeave scripts. ADD blend gives a glow effect.
 	self.hoverHighlight = self.hoverHighlight or self:CreateTexture(nil, "ARTWORK", nil, 3)
 	self.hoverHighlight:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\StatusBarHighlight")
 	self.hoverHighlight:SetBlendMode("ADD")
@@ -88,44 +51,28 @@ function EventBarMixin:OnPoolAcquire()
 	self:SetScript("OnEnter", function(owner) owner.hoverHighlight:Show() end)
 	self:SetScript("OnLeave", function(owner) owner.hoverHighlight:Hide() end)
 
-	-- Both anchors are set per-segment in SetData instead of fixed here (see
-	-- leftInset there) -- the sharper diamond point (unlike the old rounded
-	-- cap) reads as visually "pointing into" text that starts too close to
-	-- it, so the label needs to clear the whole cap width plus a small gap
-	-- on sides that actually show one, not just a flat 4px.
-	-- TextDropShadow.tga -- created (and thus drawn) before the label below,
-	-- so within the shared OVERLAY layer/sublevel it renders first and sits
-	-- behind the label text, giving titles a bit of contrast against
-	-- busy/light fill colors.
+	-- Anchors are set per-segment in SetData (see leftInset there), since the
+	-- label needs to clear the cap width on whichever sides show one.
+	-- Created before the label so it draws behind it in the OVERLAY layer.
 	self.labelShadow = self.labelShadow or self:CreateTexture(nil, "OVERLAY")
 	self.labelShadow:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\TextDropShadow")
 
 	self.label = self.label or self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	self.label:SetJustifyH("LEFT")
-	-- Default WordWrap left the label free to grow past the bar's fixed
-	-- 18px height on long single-day titles ("Auction House Dance Party"),
-	-- spilling text into the lanes above/below it. MaxLines(1) with
-	-- WordWrap on keeps it to one line and truncates with "..." instead.
+	-- WordWrap + MaxLines(1) truncates long titles with "..." instead of
+	-- growing past the bar's fixed height and spilling into other lanes.
 	self.label:SetWordWrap(true)
 	self.label:SetMaxLines(1)
 end
 
 -- segment: { colStart, colEnd, lane, isStart, isEnd, category, displayTitle,
--- colorOverride, isSingleDay, isPadding } -- displayTitle is always the
--- final, already-resolved title (Timewalking/PvP enrichment happens once at
--- cache-build time, see CalendarProvider). Color priority: an explicit
--- colorOverride (expansion/faction-specific) wins first, then single-day
--- events get a flat coral regardless of category (except "custom" --
--- player-made events are nearly always one day long, so lumping them in
--- here too would defeat the point of them having their own distinct
--- color), then the plain category color. isPadding (a faded preview of an
--- adjacent month's events on the grid's leading/trailing padding days) dims
--- whatever color was chosen.
+-- colorOverride, isSingleDay, isPadding }. Color priority: colorOverride,
+-- then single-day flat color (except "custom"), then the category color.
+-- isPadding dims whatever color was chosen (adjacent-month preview days).
 function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.categoryKey = segment.category
-	-- Stashed for the click handler above -- see CalendarPlus.ShowEventInfo
-	-- (Data/DayContextMenu.lua), which needs to know exactly which
-	-- C_Calendar day+index this bar represents to reopen it.
+	-- Used by the click handler in CalendarPlus.ShowEventInfo to identify
+	-- which C_Calendar day+index this bar represents.
 	self.startSerial = segment.startSerial
 	self.eventIndex = segment.eventIndex
 	local color = segment.colorOverride
@@ -154,9 +101,8 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.fill:ClearAllPoints()
 	self.grain:ClearAllPoints()
 
-	-- A pointed cap draws only on the side that's a real start/end; a side
-	-- cut off by the week row (isStart/isEnd false) stays flush and square,
-	-- so the fill just runs all the way to that edge instead.
+	-- A pointed cap draws only on a real start/end; a side cut off by the week
+	-- row stays flush and square, with the fill running to that edge instead.
 	local leftInset = 0
 	if segment.isStart then
 		self.capLeft:Show()
@@ -181,14 +127,9 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.label:SetPoint("LEFT", leftInset + 4, 0)
 	self.label:SetPoint("RIGHT", -4, 0)
 
-	-- Tracks the label's own rect (not the bar's) so it stays correctly
-	-- sized/positioned as the label's LEFT/RIGHT anchors move with
-	-- leftInset. TextDropShadow.tga is a soft, low-alpha blur (max ~36%
-	-- alpha in the source file) rather than a hard silhouette, so matching
-	-- it exactly to the label's tight bounds crops off the falloff that
-	-- makes it read as a shadow at all -- padding it out a few px on every
-	-- side and offsetting further (2px, was 1) gives that falloff room to
-	-- actually show past the letters.
+	-- Anchored to the label's rect (not the bar's) so it tracks leftInset.
+	-- Padded a few px past the label's tight bounds so the shadow's soft
+	-- falloff isn't cropped off at the letters' edges.
 	self.labelShadow:ClearAllPoints()
 	self.labelShadow:SetPoint("TOPLEFT", self.label, "TOPLEFT", -2, 2)
 	self.labelShadow:SetPoint("BOTTOMRIGHT", self.label, "BOTTOMRIGHT", 4, -3)
@@ -197,13 +138,9 @@ function EventBarMixin:SetData(segment, colWidth, headerHeight)
 	self.fill:SetPoint("TOPLEFT", leftInset, 0)
 	self.fill:SetPoint("BOTTOMRIGHT", -rightInset, 0)
 
-	-- Grain matches the fill's own bounds exactly (never the caps), so it
-	-- never overhangs past the pointed ends. Both the fill texture and
-	-- BarTextureFill.tga (the grain layered on top) are standalone tileable
-	-- strips (see crop_cleanbar.py); repeating them across the fill's
-	-- actual on-screen width (rather than stretching one copy) keeps the
-	-- texture reading as a consistent surface instead of a smeared blur on
-	-- wide, multi-day bars.
+	-- Repeating the tileable fill/grain textures across the fill's actual
+	-- width (rather than stretching one copy) avoids a smeared look on wide,
+	-- multi-day bars.
 	local fillWidth = width - leftInset - rightInset
 	self.fill:SetTexCoord(0, fillWidth / FILL_TILE_WIDTH, 0, 1)
 

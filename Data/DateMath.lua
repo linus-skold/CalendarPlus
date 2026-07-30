@@ -2,19 +2,14 @@ local ADDON_NAME, ns = ...
 
 CalendarPlus = CalendarPlus or {}
 
--- Pure calendar math, no C_Calendar dependency at all. Everything about
--- month navigation and grid layout used to go through C_Calendar's
--- GetMonthInfo, which reads from one shared, mutable, client-wide "currently
--- selected month" -- the source of nearly every bug this addon hit (a
--- recursion/freeze, Timewalking enrichment silently breaking depending on
--- call order, other code seeing whatever we last left it on). Ordinary
--- Gregorian calendar arithmetic doesn't need any of that.
+-- Pure calendar math, no C_Calendar dependency -- avoids C_Calendar's shared,
+-- mutable "currently selected month" state entirely.
 --
--- "Serial day" = a plain integer day count (days since 1970-01-01, i.e. Unix
--- epoch days), using Howard Hinnant's well-known days_from_civil / civil_from_days
--- algorithm (http://howardhinnant.github.io/date_algorithms.html), correct
--- across the whole proleptic Gregorian calendar. Turns all date arithmetic
--- (spans, comparisons, "N days later") into plain integer add/subtract.
+-- "Serial day" = a plain integer day count (days since 1970-01-01), using
+-- Howard Hinnant's days_from_civil / civil_from_days algorithm
+-- (http://howardhinnant.github.io/date_algorithms.html), correct across the
+-- whole proleptic Gregorian calendar. Turns date arithmetic into plain
+-- integer add/subtract.
 local DateMath = {}
 CalendarPlus.DateMath = DateMath
 
@@ -56,9 +51,8 @@ function DateMath.WeekdayOfSerial(serial)
 	return ((serial + 4) % 7) + 1
 end
 
--- today's serial day, derived from the WoW SERVER's calendar time
--- (C_DateAndTime.GetCurrentCalendarTime) rather than the player's local
--- system clock -- this addon already got bitten once by mixing those.
+-- today's serial day, derived from the WoW server's calendar time
+-- (C_DateAndTime.GetCurrentCalendarTime), not the player's local system clock.
 function DateMath.TodaySerial()
 	local t = C_DateAndTime.GetCurrentCalendarTime()
 	return DateMath.ToSerial(t.year, t.month, t.monthDay), t

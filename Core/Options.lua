@@ -2,11 +2,8 @@ local ADDON_NAME, ns = ...
 
 CalendarPlus = CalendarPlus or {}
 
--- Blizzard's Settings API (patch 10.0+): a vertical-layout category gets you
--- a Blizzard-styled panel (checkboxes/dropdowns auto-positioned) without
--- having to hand-build a dropdown widget ourselves. Built once DB_READY
--- fires so CalendarPlus.db already has its defaults copied in -- the panel
--- reads/writes CalendarPlus.db.weekStartDay directly via
+-- Built once DB_READY fires so CalendarPlus.db already has its defaults
+-- copied in. Reads/writes CalendarPlus.db.weekStartDay via
 -- Settings.RegisterAddOnSetting, same field /calendarplus weekstart uses.
 local WEEKDAY_LABELS = {
 	"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
@@ -56,9 +53,7 @@ local function BuildSettingsPanel()
 
 	Settings.RegisterAddOnCategory(category)
 
-	-- Kept so the main window's settings-gear button (see MainFrame.xml) can
-	-- jump straight here instead of the player hunting for it in the game
-	-- menu's full AddOns list.
+	-- Lets the main window's settings-gear button jump straight here.
 	CalendarPlus.settingsCategory = category
 end
 
@@ -74,16 +69,11 @@ function CalendarPlus.OpenSettings()
 end
 
 -- Listed/Unlisted shuttle picker for individual named events (see
--- CalendarProvider:GetKnownEventKeys) -- a finer-grained filter than the main
--- window's category chips: a chip toggles a whole category's visibility,
--- this decides which specific events count as part of that category at all.
--- Player-made raid/dungeon/guild invites have arbitrary titles and aren't
--- part of this list. Canvas layout (a hand-built frame) rather than the
--- vertical layout's auto-generated checkboxes/dropdowns, since neither of
--- those can represent a two-list shuttle control. Each list scrolls (see
--- CreateListPanel) rather than assuming a fixed row count -- every distinct
--- event gets its own row now instead of being lumped into a handful of
--- pattern buckets, so the list can run well past what fits without scrolling.
+-- CalendarProvider:GetKnownEventKeys): finer-grained than the main window's
+-- category chips, which toggle a whole category at once. Player-made
+-- raid/dungeon/guild invites have arbitrary titles and aren't part of this
+-- list. Uses a canvas layout since the vertical layout can't represent a
+-- two-list shuttle control.
 local ROW_HEIGHT = 20
 local LIST_WIDTH = 220
 local LIST_HEIGHT = 340
@@ -193,10 +183,7 @@ BuildEventListSubcategory = function(parentCategory)
 
 	-- Sourced from whatever events have actually occurred within
 	-- CalendarProvider's cached build window, keyed by their exact resolved
-	-- title -- not a fixed pattern list -- so every distinct event (each PvP
-	-- Brawl variant, each specific one-off promo, each Timewalking
-	-- expansion) gets its own row instead of being lumped into a shared
-	-- bucket.
+	-- title, so every distinct event gets its own row.
 	local function GetListedAndUnlistedKeys()
 		local unlisted = CalendarPlus.db.unlistedEvents
 		local listedKeys, unlistedKeys = {}, {}

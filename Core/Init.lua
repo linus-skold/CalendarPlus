@@ -39,12 +39,8 @@ eventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
 
 		addon.EventBus:Fire("DB_READY")
 
-		-- GameTimeFrame is the minimap's clock/calendar button -- part of
-		-- the base UI, not the lazy-loaded Blizzard_Calendar addon, so it
-		-- already exists by now. Replacing its OnClick (rather than
-		-- hooksecurefunc'ing ToggleCalendar, which can't be prevented from
-		-- also running afterward) means clicking it opens only our own
-		-- window, not Blizzard's native calendar too.
+		-- Replace GameTimeFrame's OnClick (rather than hooksecurefunc'ing
+		-- ToggleCalendar) so it opens only our window, not Blizzard's too.
 		if GameTimeFrame then
 			GameTimeFrame:SetScript("OnClick", function()
 				addon.ToggleMainFrame()
@@ -53,15 +49,13 @@ eventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
 	end
 end)
 
--- This client's XML schema no longer parses a <Backdrop> node (it logs
--- "Unrecognized XML: Backdrop" and silently drops it), so both top-level
--- windows apply their backdrop here in Lua instead of declaratively in XML.
--- Requires the frame to have inherits="BackdropTemplate" in its XML.
+-- This client's XML schema no longer parses a <Backdrop> node, so both
+-- top-level windows apply their backdrop here in Lua instead. Requires the
+-- frame to have inherits="BackdropTemplate" in its XML.
 --
--- bgFile is a plain white texture instead of Blizzard's brown stone dialog
--- background, tinted via SetBackdropColor to the reference mockup's
--- --bg-app -- that stone texture never matched the day cells' own color at
--- all, which read as "just black" rather than an intentional palette.
+-- bgFile is a plain white texture, tinted via SetBackdropColor to the
+-- reference mockup's --bg-app color, instead of Blizzard's stock stone
+-- dialog background.
 function addon:ApplyDialogBackdrop(frame)
 	frame:SetBackdrop({
 		bgFile = "Interface\\Buttons\\WHITE8x8",

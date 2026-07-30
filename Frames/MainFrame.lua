@@ -68,9 +68,8 @@ end
 
 -- Filters+trims CalendarProvider's cached event list down to whatever
 -- overlaps [gridFirstSerial, gridLastSerial] (the whole visible grid,
--- including padding days), applying the weekly-reset trim and the active
--- category filters in the same pass. The trim itself stays a render-time
--- step (rather than being baked into the cache) specifically so toggling
+-- including padding days), applying the weekly-reset trim and active
+-- category filters. The trim stays a render-time step so toggling
 -- trimWeeklyEventsAtReset takes effect immediately without a cache rebuild.
 local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 	local events = CalendarPlus.CalendarProvider:GetEventCache()
@@ -83,11 +82,9 @@ local function GetVisibleEvents(gridFirstSerial, gridLastSerial)
 		if activeCategoryFilters[entry.category] ~= false and not (entry.eventKey and unlisted[entry.eventKey]) then
 			local endSerial = entry.endSerial
 
-			-- Weekly-cadence events (Timewalking, PvP Brawls, etc.) often
-			-- report their true end as the reset day itself, overlapping one
-			-- day with next week's instance starting the same day. Trimming
-			-- the old one's end back to the day before reset avoids that
-			-- clutter. Only a segment's true end (isEnd) gets trimmed.
+			-- Weekly-cadence events often report their true end as the reset day
+			-- itself, overlapping with next week's instance starting the same
+			-- day. Trim the old one's end back to the day before reset.
 			if trimEnabled and entry.isEnd and entry.numSequenceDays
 				and entry.numSequenceDays >= 6 and entry.numSequenceDays <= 8
 				and endSerial > entry.startSerial then
@@ -112,10 +109,9 @@ end
 
 -- Clips the (already grid-filtered) event list to one week row's 7-day
 -- window, in 0-based column terms. realColStart/realColEnd mark the
--- sub-range of [colStart, colEnd] that falls within the real (non-padding)
--- month -- nil,nil if the event doesn't touch the real month at all within
--- this week -- so WeekRowMixin can render the faded/bright split without
--- needing to know about serial days at all.
+-- sub-range of [colStart, colEnd] within the real (non-padding) month --
+-- nil,nil if the event doesn't touch it -- so WeekRowMixin can render the
+-- faded/bright split without knowing about serial days.
 local function ClipEventsToWeek(events, weekFirstSerial, weekLastSerial, monthFirstSerial, monthLastSerial)
 	local weekSegments = {}
 	for _, ev in ipairs(events) do
@@ -171,18 +167,11 @@ local function BuildFilterChips(filterBar)
 	return filterChips
 end
 
--- A category's chip only makes sense to show while at least one of its named
--- events (see CalendarProvider:GetKnownEventKeys) is Listed -- if every one
--- has been moved to Unlisted via the Settings panel's shuttle picker,
--- nothing in that category could ever appear on the calendar regardless of
--- the chip's own on/off state, so the chip is hidden instead of sitting
--- there as a dead toggle. A category with zero known events at all (nothing
--- of that kind has occurred within the cache's build window yet) is treated
--- as still having listed members -- only a category the user has actually,
--- deliberately emptied out gets its chip hidden. singleDay isn't a
--- named-event category (it's the isSingleDay override applied in
--- CalendarProvider, cutting across all categories), so it has no members
--- here and always stays visible.
+-- A category's chip only shows while at least one of its named events (see
+-- CalendarProvider:GetKnownEventKeys) is Listed; if every one has been moved
+-- to Unlisted, the chip is hidden instead of sitting there as a dead toggle.
+-- A category with zero known events is treated as still having listed
+-- members. singleDay isn't a named-event category, so it always stays visible.
 local function CategoryHasListedMembers(category)
 	local unlisted = CalendarPlus.db and CalendarPlus.db.unlistedEvents or {}
 	local hasMembers = false
@@ -198,8 +187,7 @@ local function CategoryHasListedMembers(category)
 end
 
 -- Re-flows the chip row every repaint so a category chip that just lost its
--- last Listed member disappears (and the rest close the gap) immediately,
--- without needing the chips to have been built in a fixed order/position.
+-- last Listed member disappears and the rest close the gap immediately.
 local function LayoutFilterChips()
 	local x = 0
 	for _, chip in ipairs(filterChips) do
@@ -216,10 +204,8 @@ end
 
 -- Lays out the currently-selected month (currentOffset months from today)
 -- into up to 6 week rows, reading from CalendarProvider's precomputed event
--- cache instead of live C_Calendar calls -- month metadata (day counts,
--- weekday-of-1st) comes from pure DateMath arithmetic instead of
--- GetMonthInfo, so navigating never touches C_Calendar's shared "currently
--- selected month" state at all.
+-- cache. Month metadata comes from pure DateMath arithmetic instead of
+-- GetMonthInfo, so navigating never touches C_Calendar's shared selection.
 function CalendarPlus.RepaintMonth()
 	local frame = CalendarPlusMainFrame
 	if not frame or not frame:IsShown() then return end
@@ -248,12 +234,9 @@ function CalendarPlus.RepaintMonth()
 	local firstWeekday = (rawFirstWeekday - GetWeekStartDay()) % 7
 	local rows = GetOrCreateWeekRows(frame.Grid)
 
-	-- Not every month needs all 6 fixed row slots (e.g. a month starting
-	-- right on the configured week-start day only needs 5 rows to cover up
-	-- to 35 days) -- rendering unneeded trailing rows just shows a mostly
-	-- blank strip of next month's padding days. Rows are reused/cached
-	-- across repaints (see GetOrCreateWeekRows), so leftover ones from a
-	-- previous month that needed more rows must be explicitly hidden here.
+	-- Not every month needs all 6 fixed row slots. Rows are reused across
+	-- repaints (see GetOrCreateWeekRows), so leftover ones from a previous
+	-- month that needed more rows must be explicitly hidden here.
 	local neededRows = math.ceil((firstWeekday + numDays) / COLUMNS)
 	local gridFirstSerial = monthFirstSerial - firstWeekday
 	local gridLastSerial = gridFirstSerial + neededRows * COLUMNS - 1
@@ -291,16 +274,12 @@ function CalendarPlus.RepaintMonth()
 		end
 	end
 
-	-- Keep Grid's own bounds matching its actual content height so its panel
-	-- background (see MainFrame_OnLoad) covers busy months fully instead of
-	-- stopping at a fixed height while rows overflow past it.
+	-- Keep Grid's bounds matching its actual content height so its panel
+	-- background covers busy months fully instead of stopping short.
 	frame.Grid:SetHeight(cumulativeY)
 
-	-- Grow/shrink the whole window to fit the actual content height instead
-	-- of leaving a fixed-height backdrop border that busy months' rows spill
-	-- silently past. topOverhead (frame top -> Grid top, in screen pixels) is
-	-- measured live rather than hard-coded so it stays correct if the layout
-	-- above the grid ever changes.
+	-- Grow/shrink the window to fit the actual content height. topOverhead
+	-- is measured live so it stays correct if the layout above the grid changes.
 	local topOverhead = frame:GetTop() - frame.Grid:GetTop()
 	local bottomMargin = 16
 	frame:SetHeight(topOverhead + cumulativeY + bottomMargin)
@@ -310,32 +289,19 @@ function CalendarPlus.MainFrame_OnLoad(frame)
 	CalendarPlus:ApplyDialogBackdrop(frame)
 	tinsert(UISpecialFrames, frame:GetName())
 
-	-- BackgroundTest.tga -- sits directly on the frame itself, covering the
-	-- whole window behind everything else (TopBar/Grid panels still draw
-	-- their own opaque backgrounds over it within their own bounds). The
-	-- source art is 512x256 padded into a 512x512 canvas (Blizzard wants a
-	-- power-of-two square), living in the top half -- TexCoord clips to just
-	-- that top 512x256 region instead of sampling the blank padding below it.
-	-- Converted from the original BackgroundTest.png -- loose-file SetTexture
-	-- paths don't actually load PNG in this client (it fails silently,
-	-- leaving the backdrop's near-black tint showing through), unlike every
-	-- other asset in Media/ which is TGA.
+	-- Source art is 512x256 padded into a 512x512 canvas (power-of-two square);
+	-- TexCoord clips to the top half where the actual image lives.
 	local bgTest = frame:CreateTexture(nil, "BACKGROUND")
 	bgTest:SetAllPoints()
 	bgTest:SetTexture("Interface\\AddOns\\CalendarPlus\\Media\\BackgroundTest")
 	bgTest:SetTexCoord(0, 1, 0, 0.5)
 
-	-- Panel behind the whole grid (matching the mockup's .grid-card), so the
-	-- gaps between week rows read as an intentional layered surface instead
-	-- of empty space showing the window backdrop through.
 	local gridBg = frame.Grid:CreateTexture(nil, "BACKGROUND")
 	gridBg:SetAllPoints()
 	local panel = CalendarPlus.Colors.surface.panel
 	gridBg:SetColorTexture(panel.r, panel.g, panel.b, 1)
 
-	-- Thin gold accent line under the header row -- an ornate-parchment-style
-	-- section divider, sitting right above the day-of-week header. Plain
-	-- flat-colored texture (no gradient/image asset needed).
+	-- Thin accent line under the header row.
 	local accent = CalendarPlus.Colors.surface.accent
 	local headerDivider = frame:CreateTexture(nil, "ARTWORK")
 	headerDivider:SetHeight(2)
@@ -362,10 +328,8 @@ function CalendarPlus.MainFrame_OnShow()
 	currentOffset = 0
 	CalendarPlus.RepaintMonth()
 
-	-- Warms up Blizzard's own Calendar UI (loads Blizzard_Calendar, parks
-	-- the real CalendarFrame off-screen) as soon as our window opens,
-	-- instead of only doing that reactively the first time the player
-	-- right-clicks a day or clicks an event -- see DayContextMenu.lua.
+	-- Warms up Blizzard's Calendar UI as soon as our window opens, instead of
+	-- reactively on the first right-click or event click.
 	CalendarPlus.EnsureCalendarUIReady()
 end
 

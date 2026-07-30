@@ -11,44 +11,34 @@ provider.MONTH_NAMES_ABBR = {
 }
 
 -- How far back/forward (in months from today) to precompute and cache in one
--- pass, and how many days old that cache can get before it's rebuilt from
--- scratch. Navigating further out than this window than falls back to
--- nothing rather than a live fetch -- a deliberate tradeoff for dropping all
--- the per-repaint C_Calendar juggling below.
+-- pass, and how many days old the cache can get before it's rebuilt.
+-- Navigating further out than this window falls back to nothing rather than
+-- a live fetch.
 local BUILD_MONTHS_BACK = 2
 local BUILD_MONTHS_FORWARD = 6
 local CACHE_MAX_AGE_DAYS = 7
 
 local anchored = false
 
--- SetAbsMonth (called once per month during a cache build) fires
--- CALENDAR_UPDATE_EVENT_LIST synchronously, not just after a server
--- round-trip -- our own watcher reacts to that by rebuilding, which would
--- call SetAbsMonth again, recursing forever (a real C-stack overflow this
--- addon hit earlier). Held true for the ENTIRE build, not just bracketing
--- each individual SetAbsMonth call, since there's no guarantee the event
--- doesn't fire on some deferred tick between them.
+-- SetAbsMonth fires CALENDAR_UPDATE_EVENT_LIST synchronously; the watcher
+-- reacts by rebuilding, which would call SetAbsMonth again and recurse.
+-- Held true for the entire build, not just around each SetAbsMonth call,
+-- since the event isn't guaranteed to fire only between them.
 local resolvingSelection = false
 
--- Only ever requests fresh server data once per session -- guarded so it
--- doesn't refire on every rebuild.
+-- Requests fresh server data once per session; guarded against refiring on
+-- every rebuild.
 local function EnsureOpened()
 	if anchored then return end
 	anchored = true
 	C_Calendar.OpenCalendar()
 end
 
--- The weekly reset always lands on the same weekday for a given realm/region
--- (Tuesday NA, Wednesday EU, etc.), so this is derived fresh each call
--- rather than cached -- cheap enough not to need it, and avoids ever holding
--- a stale value. Deliberately stays entirely within C_DateAndTime's own
--- server-time API rather than mixing in time()/date(), which read the
--- PLAYER'S LOCAL system clock -- adding a server-relative "seconds until
--- reset" duration to a local timestamp lands on the wrong weekday whenever
--- the player's timezone differs from the server's (i.e. almost always),
--- which is exactly the kind of bug that silently breaks this only right
--- around the reset day itself. Returned in the same 1=Sunday..7=Saturday
--- convention as CalendarTime.weekday / DateMath.WeekdayOfSerial.
+-- Derived fresh each call, staying entirely within C_DateAndTime's
+-- server-time API -- mixing in time()/date() (local system clock) would land
+-- on the wrong weekday whenever the player's timezone differs from the
+-- server's. Returned in the same 1=Sunday..7=Saturday convention as
+-- CalendarTime.weekday / DateMath.WeekdayOfSerial.
 function provider:GetResetWeekday()
 	local today = C_DateAndTime.GetCurrentCalendarTime()
 	local secondsSinceMidnight = today.hour * 3600 + today.minute * 60
@@ -56,18 +46,11 @@ function provider:GetResetWeekday()
 	return ((today.weekday - 1 + daysForward) % 7) + 1
 end
 
--- Forces C_Calendar's shared "currently selected month" to the real current
--- month. Nothing else in this addon touches that selection anymore (the
--- whole point of the cache rewrite), so it could be sitting on whatever
--- ANY other code last left it at. That's fine for our own rendering (pure
--- DateMath, doesn't care), but Blizzard's own day-context-menu code (see
--- DayContextMenu.lua) resolves a dayButton's monthOffset via
--- C_Calendar.GetMonthInfo(monthOffset) *relative to that same shared
--- selection* -- so it must be anchored to "today" immediately before
--- invoking any of that code, or an offset meant to be relative to today
--- would resolve to the wrong month entirely. Guarded with the same flag
--- RebuildEventCache uses so this doesn't also trigger a redundant rebuild
--- via the watcher.
+-- Forces C_Calendar's shared "currently selected month" to today. Blizzard's
+-- day-context-menu code resolves a dayButton's monthOffset relative to that
+-- same shared selection, so it must be anchored right before invoking it.
+-- Guarded with the same flag RebuildEventCache uses to avoid a redundant
+-- rebuild via the watcher.
 function provider:AnchorToCurrentMonth()
 	EnsureOpened()
 	local today = C_DateAndTime.GetCurrentCalendarTime()
@@ -77,14 +60,10 @@ function provider:AnchorToCurrentMonth()
 end
 
 -- Expansion-name enrichment for events like "Timewalking Dungeon Event" whose
--- title alone doesn't say which expansion -- that only appears in the full
--- description text. GetDayEvent's own description field turned out empty for
--- these (it's meant for player-created events); the richer text ("...revisit
--- past dungeons from the Shadowlands expansion") comes from the dedicated
--- holiday API instead, which is synchronous -- no OpenEvent/async wait
--- needed, but it does need the month currently being scanned to actually be
--- C_Calendar's "currently selected" one, which only holds true while
--- BuildEvents is actively iterating that specific month below.
+-- title alone doesn't say which expansion. GetDayEvent's description field is
+-- empty for these; the expansion name comes from C_Calendar.GetHolidayInfo
+-- instead, which needs the month being scanned to be the currently selected
+-- one (true while BuildEvents iterates that month below).
 local EXPANSION_PATTERNS = {
 	{ pattern = "Burning Crusade", label = "TBC" },
 	{ pattern = "Wrath of the Lich King", label = "Wrath" },
@@ -154,11 +133,7 @@ end
 -- continuous pass, merging each multi-day event's per-day entries
 -- (CalendarEventInfo.sequenceType: START/ONGOING/END, keyed by eventID) into
 -- a single { startSerial, endSerial, isStart, isEnd, title, category,
--- colorOverride, numSequenceDays } span, in DateMath serial-day terms. Since
--- it's one continuous scan across the whole window instead of separate
--- per-month fetches, an event spanning a month boundary just naturally
--- keeps extending the same entry -- no leading/trailing-padding split-and-
--- link machinery needed at render time anymore.
+-- colorOverride, numSequenceDays } span, in DateMath serial-day terms.
 local function BuildEvents()
 	local events = {}
 	local openByEventID = {}
@@ -187,24 +162,12 @@ local function BuildEvents()
 				local displayTitle, colorOverride = ComputeDisplay(ev, day, i, expansionCache)
 				local open = ev.eventID and openByEventID[ev.eventID]
 
-				-- Listed/Unlisted keys off the fully-resolved display title
-				-- itself (e.g. "Timewalking: Classic", or a PvP Brawl's own
-				-- specific name) rather than a fixed pattern list, so every
-				-- distinct event gets its own row with nothing lumped into a
-				-- shared catch-all.
-				--
-				-- Two deliberate exceptions, both grouped under one shared
-				-- key regardless of the specific title, since each is really
-				-- "the same thing" from the player's point of view:
-				-- - the yearly Anniversary celebration's title changes every
-				--   year ("15th Anniversary", "16th Anniversary", ...), which
-				--   would otherwise make each year's occurrence its own
-				--   permanent, never-reused row in the picker.
-				-- - player-made events (calendarType ~= HOLIDAY) have
-				--   arbitrary titles unique to each one, whether you created
-				--   them yourself or were just invited -- there's no sense
-				--   listing them individually, so they all collapse into one
-				--   "Player Events" bucket instead.
+				-- Listed/Unlisted keys off the fully-resolved display title,
+				-- so every distinct event gets its own row. Two exceptions
+				-- grouped under a shared key: the yearly Anniversary
+				-- celebration's title changes every year, and player-made
+				-- events have arbitrary unique titles -- both collapse into
+				-- one shared bucket instead of one row each.
 				local eventKey
 				if ev.calendarType ~= "HOLIDAY" then
 					eventKey = "Player Events"
@@ -220,12 +183,9 @@ local function BuildEvents()
 						isStart = true, isEnd = false,
 						title = displayTitle, category = category, colorOverride = colorOverride,
 						numSequenceDays = ev.numSequenceDays, eventKey = eventKey, namedCategory = category,
-						-- eventIndex is C_Calendar's own per-day event index
-						-- (the "i" this event was found at, on its startSerial
-						-- day specifically) -- kept so clicking the rendered
-						-- bar can later call C_Calendar.OpenEvent(monthOffset,
-						-- day, eventIndex) to show Blizzard's own info panel
-						-- for exactly this event (see DayContextMenu.lua).
+						-- C_Calendar's per-day event index, kept so clicking the
+						-- rendered bar can call C_Calendar.OpenEvent to show
+						-- Blizzard's info panel for this event.
 						eventIndex = i,
 					}
 					events[#events + 1] = entry
@@ -239,9 +199,8 @@ local function BuildEvents()
 						openByEventID[ev.eventID] = nil
 					end
 				else
-					-- No open sequence to continue (either a plain
-					-- single-day event, or the START happened before our
-					-- build window).
+					-- No open sequence to continue: a plain single-day event,
+					-- or the START happened before our build window.
 					local entry = {
 						startSerial = serial, endSerial = serial,
 						isStart = seq ~= "ONGOING" and seq ~= "END",
@@ -261,19 +220,11 @@ local function BuildEvents()
 
 	for _, entry in ipairs(events) do
 		entry.isSingleDay = entry.startSerial == entry.endSerial and entry.isStart and entry.isEnd
-		-- Single-day events get their own filter bucket instead of whichever
-		-- category GetForEvent originally classified them under, matching
-		-- the flat coral color EventBarMixin already gives them regardless
-		-- of category. This is a build-time (genuine single-day) call, not
-		-- the render-time isSingleDay recompute in MainFrame's weekly-reset
-		-- trim -- an event that only *becomes* one visible day because it
-		-- got trimmed this week stays filed under its real category.
-		--
-		-- Player-made events are exempt: they're almost always one day
-		-- long, so folding them into "singleDay" here would defeat the
-		-- whole point of giving player events their own distinct category
-		-- and color -- nearly every one of them would silently end up
-		-- coral instead of pink.
+		-- Single-day events get their own filter bucket (matching the flat
+		-- color EventBarMixin gives them), except player-made events, which
+		-- keep their own distinct category instead of folding into this one.
+		-- This is the build-time single-day check, not MainFrame's
+		-- render-time weekly-reset trim.
 		if entry.isSingleDay and entry.category ~= "custom" then
 			entry.category = "singleDay"
 		end
@@ -301,9 +252,8 @@ function provider:RebuildEventCache()
 	CalendarPlus.EventBus:Fire("CALENDAR_DATA_INVALIDATED")
 end
 
--- Builds (or rebuilds, if missing/stale) on demand. The build itself is
--- synchronous and cheap (a few hundred local C_Calendar calls, no network
--- wait), so callers can just use the return value immediately.
+-- Builds (or rebuilds, if missing/stale) on demand. The build is synchronous
+-- and cheap, so callers can use the return value immediately.
 function provider:GetEventCache()
 	if not CalendarPlus.db then return {} end
 
@@ -317,14 +267,10 @@ function provider:GetEventCache()
 	return cache and cache.events or {}
 end
 
--- Every distinct named (systemwide-feed, i.e. eventKey ~= nil) event
--- currently present in the cache, alphabetically, each tagged with its true
--- classification category (entry.namedCategory, never overwritten by the
--- singleDay filter-bucket override -- see BuildEvents). Backs both the
--- Settings panel's Listed/Unlisted picker and MainFrame's category-chip
--- visibility check. Since this only reflects whatever actually occurred
--- within the cache's build window, an event that hasn't happened yet (or
--- already scrolled out of it) simply won't appear here until it does.
+-- Every distinct named event currently in the cache, alphabetically, tagged
+-- with its true classification category (namedCategory, never overwritten by
+-- the singleDay override -- see BuildEvents). Backs the Settings panel's
+-- Listed/Unlisted picker and MainFrame's category-chip visibility check.
 function provider:GetKnownEventKeys()
 	local events = self:GetEventCache()
 	local seen = {}
@@ -347,9 +293,7 @@ watcher:SetScript("OnEvent", function()
 	provider:RebuildEventCache()
 end)
 
--- Pre-warm the cache at login (in the background of DB_READY, not the first
--- time the user opens the calendar) so opening it doesn't have to wait on a
--- build.
+-- Pre-warm the cache at login so opening the calendar doesn't wait on a build.
 CalendarPlus.EventBus:On("DB_READY", function()
 	provider:GetEventCache()
 end)
