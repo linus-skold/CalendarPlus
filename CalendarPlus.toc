@@ -1,4 +1,4 @@
-## Interface: 121000
+## Interface: 120100
 ## Title: CalendarPlus
 ## Notes: Reskinned calendar with multi-day event spans and category filters
 ## Author: linus-skold
