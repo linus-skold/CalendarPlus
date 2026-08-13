@@ -24,16 +24,15 @@
 					</OnClick>
 				</Scripts>
 			</Button>
-			<Button name="$parentResetFilters" parentKey="ResetFilters" inherits="UIPanelButtonTemplate">
-				<Size x="52" y="22"/>
+			<Button name="$parentResetFilters" parentKey="ResetFilters">
+				<Size x="22" y="22"/>
 				<Anchors>
 					<Anchor point="RIGHT" relativeKey="$parent.SettingsButton" relativePoint="LEFT" x="-8"/>
 				</Anchors>
-				<Scripts>
-					<OnLoad>
-						self:SetText("Reset")
-					</OnLoad>
-				</Scripts>
+				<NormalTexture atlas="128-redbutton-refresh"/>
+				<PushedTexture atlas="128-redbutton-refresh-pressed"/>
+				<DisabledTexture atlas="128-redbutton-refresh-disabled"/>
+				<HighlightTexture atlas="128-redbutton-refresh-highlight"/>
 			</Button>
 			<Frame name="$parentTopBar" parentKey="TopBar">
 				<Size x="0" y="36"/>
@@ -42,27 +41,18 @@
 					<Anchor point="TOPRIGHT" x="-16" y="-16"/>
 				</Anchors>
 				<Frames>
-					<Button name="$parentPrevMonth" parentKey="PrevMonth" inherits="UIPanelButtonTemplate">
-						<Size x="24" y="22"/>
+					<Button name="$parentPrevMonth" parentKey="PrevMonth">
+						<Size x="24" y="24"/>
 						<Anchors>
 							<Anchor point="LEFT"/>
 						</Anchors>
-						<Scripts>
-							<OnLoad>
-								self:SetText("&lt;")
-							</OnLoad>
-						</Scripts>
+						<NormalTexture atlas="shop-icon-carousel-back-up"/>
+						<PushedTexture atlas="shop-icon-carousel-back-pressed"/>
 					</Button>
-					<Button name="$parentNextMonth" parentKey="NextMonth" inherits="UIPanelButtonTemplate">
-						<Size x="24" y="22"/>
-						<Anchors>
-							<Anchor point="LEFT" relativeKey="$parent.PrevMonth" relativePoint="RIGHT" x="4"/>
-						</Anchors>
-						<Scripts>
-							<OnLoad>
-								self:SetText("&gt;")
-							</OnLoad>
-						</Scripts>
+					<Button name="$parentNextMonth" parentKey="NextMonth">
+						<Size x="24" y="24"/>
+						<NormalTexture atlas="shop-icon-carousel-next-up"/>
+						<PushedTexture atlas="shop-icon-carousel-next-pressed"/>
 					</Button>
 					<Frame name="$parentFilterBar" parentKey="FilterBar">
 						<Size x="800" y="20"/>
@@ -75,7 +65,7 @@
 					<Layer level="OVERLAY">
 						<FontString name="$parentMonthLabel" parentKey="MonthLabel" inherits="GameFontNormalLarge">
 							<Anchors>
-								<Anchor point="LEFT" relativeKey="$parent.NextMonth" relativePoint="RIGHT" x="10"/>
+								<Anchor point="LEFT" relativeKey="$parent.PrevMonth" relativePoint="RIGHT" x="10"/>
 							</Anchors>
 						</FontString>
 					</Layer>

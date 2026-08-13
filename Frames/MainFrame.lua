@@ -254,6 +254,7 @@ function CalendarPlus.RepaintMonth()
 
 	local monthName = CalendarPlus.CalendarProvider.MONTH_NAMES_ABBR[month]
 	frame.TopBar.MonthLabel:SetText(monthName .. " " .. year)
+	frame.TopBar.NextMonth:SetPoint("LEFT", frame.TopBar.MonthLabel, "RIGHT", 10, 0)
 
 	UpdateDowHeader()
 	LayoutFilterChips()
